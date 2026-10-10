@@ -1,0 +1,31 @@
+docs/personal-bot/mvp-backend-design.md
+  s_3e98741f3cf33e::t_ec8e89c60131d2 137-145
+  s_3e98741f3cf33e::t_b960abd52b8439 3
+docs/personal-bot/mvp-frontend-design.md
+  s_3e98741f3cf33e::t_9540f678978437 3
+docs/personal-bot/mvp-tasks.md
+  s_3e98741f3cf33e::t_4db43e4b5190a6 262-349
+  s_3e98741f3cf33e::t_09467e70c65060 1-3,5-38
+  s_3e98741f3cf33e::t_75a8473a428a21 350-459,461
+  s_3e98741f3cf33e::t_c768e8846610f4 122-200
+  s_3e98741f3cf33e::t_3d3db1b8d6de9f 4
+  s_3e98741f3cf33e::t_4e3caf5dc3c374 201-261
+  s_3e98741f3cf33e::t_d115a7e87831a5 39-121
+  s_3e98741f3cf33e::t_c030e3853f6434 460,462-465
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "55c611fa9663ab1f4557edb1634b9673a9f2fbee",
+  "prompts": {},
+  "sessions": {
+    "s_3e98741f3cf33e": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_td31b0v6fr5f",
+        "model": "kr-claude-opus-5.5"
+      },
+      "human_author": "hcl-z <1401859664@qq.com>"
+    }
+  }
+}
