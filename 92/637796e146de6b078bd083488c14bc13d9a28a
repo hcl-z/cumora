@@ -1,0 +1,58 @@
+server/src/env.ts
+  s_3e98741f3cf33e::t_0f3cc5f763d769 10
+  s_3e98741f3cf33e::t_28c0d97b624c3a 116-126
+  s_3e98741f3cf33e::t_afb8f20a28e7b6 511-526
+server/src/__tests__/personal-local-login.test.ts
+  s_3e98741f3cf33e::t_e2e08b45edcdd1 1-83
+src/components/AuthGate.tsx
+  s_3e98741f3cf33e::t_92145f86faab75 155
+  s_3e98741f3cf33e::t_7ec3e972930b91 46-65,69
+  s_3e98741f3cf33e::t_4b274dcf3a7b88 108-124
+server/src/index.ts
+  s_3e98741f3cf33e::t_e80428dd2ee115 232-244
+  s_3e98741f3cf33e::t_86859960e910cc 38
+deploy/personal/dev.env.example
+  s_3e98741f3cf33e::t_5d67ae9cc663db 16-17,19-30
+docs/personal-bot/mvp-backend-design.md
+  s_3e98741f3cf33e::t_88d7fbc7c3fda1 72-73
+server/src/personal/local-login-tokens.ts
+  s_3e98741f3cf33e::t_9904dd15e2ed06 1-5
+deploy/personal/README.md
+  s_3e98741f3cf33e::t_568a63f4f3c673 32-44
+server/src/api/router.ts
+  s_3e98741f3cf33e::t_9da42a0491584e 39
+  s_3e98741f3cf33e::t_7749cba027e7bd 913-943
+  s_3e98741f3cf33e::t_f068539936c9b3 1153
+docs/personal-bot/mvp-tasks.md
+  s_3e98741f3cf33e::t_89cea323a96fd7 54,59-63
+server/src/personal/owner.ts
+  s_3e98741f3cf33e::t_71c1352f6ff32e 1-76
+server/src/admin.ts
+  s_3e98741f3cf33e::t_aff263a7b49b82 500-502
+  s_3e98741f3cf33e::t_92c43107052aad 31
+src/api/client.ts
+  s_3e98741f3cf33e::t_e76b9714c868a8 1345-1350
+server/src/personal/local-login.ts
+  s_3e98741f3cf33e::t_0b2af37d1bb3e2 1-81
+server/src/__tests__/personal-owner.test.ts
+  s_3e98741f3cf33e::t_d136a74beda476 1-91
+server/src/oauth.ts
+  s_3e98741f3cf33e::t_8e709422a9fa02 460-467
+  s_3e98741f3cf33e::t_16c4e4640db73b 42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "92637796e146de6b078bd083488c14bc13d9a28a",
+  "prompts": {},
+  "sessions": {
+    "s_3e98741f3cf33e": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_td31b0v6fr5f",
+        "model": "kr-claude-opus-5.5"
+      },
+      "human_author": "hcl-z <1401859664@qq.com>"
+    }
+  }
+}
