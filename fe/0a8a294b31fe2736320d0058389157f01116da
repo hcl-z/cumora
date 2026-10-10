@@ -1,0 +1,49 @@
+deploy/personal/README.md
+  s_3e98741f3cf33e::t_c180ad1da795e8 1-42
+docs/personal-bot/mvp-tasks.md
+  s_3e98741f3cf33e::t_6a312dc1a2f35f 46-47
+  s_3e98741f3cf33e::t_b1d5a93131e7be 48-50
+  s_3e98741f3cf33e::t_b716e6f8ffde2d 41
+server/src/personal/mode.ts
+  s_3e98741f3cf33e::t_60d2a7c725ef75 1-10
+docs/personal-bot/mvp-backend-design.md
+  s_3e98741f3cf33e::t_ad731f13aafa29 124
+  s_3e98741f3cf33e::t_3080435ed841d5 32
+  s_3e98741f3cf33e::t_1d9d271387a917 891
+  s_3e98741f3cf33e::t_f48012b06379ac 850
+  s_3e98741f3cf33e::t_c43b71f8b8a5a0 39
+deploy/personal/dev.env.example
+  s_3e98741f3cf33e::t_bb8b2420ed0796 1-17
+server/src/agents/scheduler.ts
+  s_3e98741f3cf33e::t_0b6c2b2ffe9e79 618-625
+server/src/onboardCompany.ts
+  s_3e98741f3cf33e::t_61233ccc94c5bd 504
+  s_3e98741f3cf33e::t_611d433035317b 122-123
+  s_3e98741f3cf33e::t_77448b054bcfda 524
+  s_3e98741f3cf33e::t_e5141e21f7d1c0 20
+server/src/env.ts
+  s_3e98741f3cf33e::t_ec4ca08a9dd268 109-114
+  s_3e98741f3cf33e::t_9eb2c52b8530aa 9
+server/src/seed.ts
+  s_3e98741f3cf33e::t_dac8fcff39e67c 2
+  s_3e98741f3cf33e::t_2b00d73812aa75 116-118
+server/src/__tests__/personal-mode.test.ts
+  s_3e98741f3cf33e::t_b8de3327a542f9 7,9,18-24
+  s_3e98741f3cf33e::t_11704622dfebe6 1-6,8,10-17,25-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "fe0a8a294b31fe2736320d0058389157f01116da",
+  "prompts": {},
+  "sessions": {
+    "s_3e98741f3cf33e": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_td31b0v6fr5f",
+        "model": "kr-claude-opus-5.5"
+      },
+      "human_author": "hcl-z <1401859664@qq.com>"
+    }
+  }
+}
