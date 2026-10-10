@@ -615,6 +615,14 @@ async function wakeOne(
     return durableWithoutDelivery
   }
 
+  // Personal mode has no Kubernetes: every bot lives on the paired daemon, so a
+  // wake that reaches here is deferred to the inbox exactly like an offline host.
+  if (env.PERSONAL_MODE) {
+    console.log(`[scheduler] ${agentId} personal mode; no managed pod — ${
+      durableWithoutDelivery ? 'wake deferred to reconnect' : `${reason} wake not delivered`}`)
+    return durableWithoutDelivery
+  }
+
   // Paid (pro/max) managed agent — spin up a Pod. The Pod will catch up on first
   // connect via its initial drain(); we don't need to deliver the
   // event explicitly afterwards because the inbox IS the source of

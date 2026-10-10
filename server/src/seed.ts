@@ -1,4 +1,5 @@
 import { pool } from './db/pool.js'
+import { env } from './env.js'
 
 /**
  * Ensure the placeholder 'yetone' user row exists so FK references from
@@ -112,6 +113,9 @@ interface SeedMsg {
 const SEED_MESSAGES: SeedMsg[] = []
 
 export async function seedIfEmpty(): Promise<void> {
+  // Personal mode starts empty. The placeholder user would also count as the
+  // deployment's first account, which personal mode reserves for its owner.
+  if (env.PERSONAL_MODE) return
   // Always make sure the dev account exists so login works on a fresh DB.
   // Email: yetone@dev.local  Password: cumora-dev (DEV ONLY).
   await ensureDevUser()

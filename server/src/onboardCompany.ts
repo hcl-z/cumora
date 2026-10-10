@@ -17,6 +17,7 @@ import { gravatarUrlForEmail } from './auth.js'
 import { ensureDirectConversation } from './agents/private_chat.js'
 import { CH_MESSAGE_NEW } from './redis.js'
 import { enqueueBroadcast, nudgeRealtimeOutbox } from './realtime-outbox.js'
+import { env } from './env.js'
 
 interface StarterAgent {
   /** Preferred id; we'll suffix on collision. */
@@ -118,6 +119,8 @@ export async function onboardStarterAgents(
    *  Cumora Cloud behavior. */
   opts?: { computerId?: string | null; engine?: string | null },
 ): Promise<void> {
+  // Personal mode replaces the starter team with its own Chief bot onboarding.
+  if (env.PERSONAL_MODE) return
   const { rows: stamp } = await pool.query<{
     starter_seeded_at: Date | null
     starter_dms_seeded_at: Date | null
@@ -498,6 +501,7 @@ export async function backfillHumanGravatars(): Promise<void> {
  * agent's "voice".
  */
 export async function backfillStarterAvatars(): Promise<void> {
+  if (env.PERSONAL_MODE) return
   const STARTER_IDS = ['atlas', 'iris', 'bram', 'nova'] as const
   let total = 0
   for (const name of STARTER_IDS) {
@@ -517,6 +521,7 @@ export async function backfillStarterAvatars(): Promise<void> {
 }
 
 export async function backfillStarterAgents(): Promise<void> {
+  if (env.PERSONAL_MODE) return
   // For companies that ALREADY have agents (from the old seed.ts or some
   // other source), mark phase 1 as done so we don't replay it. Phase 2 (DM
   // seeding) is left alone — onboardStarterAgents will fire it for them.

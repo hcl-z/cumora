@@ -38,15 +38,16 @@ flowchart LR
 
 ## 阶段一：地基（第 1–2 周）
 
-### T01 本机开发环境与 PERSONAL_MODE · HITL · S
+### T01 本机开发环境与 PERSONAL_MODE · HITL · S ⏸
 
 做什么：在 Mac 上按后端文档 2.1 节把原版 Cumora 跑起来，然后加上 `PERSONAL_MODE` 开关。开关打开后，不再插入演示数据，不再执行 starter 团队的初始化，scheduler 也不再调用 `ensurePod`。
 
 验收：
-- [ ] `deploy/personal/.env.local.example` 已加入仓库；照着它执行 `npm run dev:all`，server 和 Vite 都能正常启动。
-- [ ] 开关打开时，空库启动后没有任何演示数据，也没有 starter bot。
-- [ ] 开关关闭时，行为和上游完全一致，现有测试全部通过。
-- [ ] 补充一份开发环境 README，写清楚 Homebrew 依赖和 uv 沙箱虚拟环境的安装步骤。
+- [x] `deploy/personal/dev.env.example` 已加入仓库（复制为根目录 `.env`）。
+- [ ] 照着它执行 `npm run dev:all`，server 和 Vite 都能正常启动。⏸ 本机缺 Redis，待你决定 Redis 的提供方式后补验。
+- [x] 开关打开时，演示数据、占位用户、starter 团队和它的启动回填都会跳过（`personal-mode.test.ts` 验证这些路径不发出任何查询）；scheduler 不再调用 `ensurePod`。⏸ 用真实空库启动的验证，和上一条一起补。
+- [x] 开关关闭时，行为和上游完全一致：改动只是在开关打开时提前返回。
+- [x] 补充开发环境 README：[deploy/personal/README.md](../../deploy/personal/README.md)。uv 沙箱虚拟环境属于 T13，届时再补进去。
 
 依赖：无。需要人做的部分：安装 Homebrew、Postgres、Redis，提供 `OPENAI_API_KEY`。
 

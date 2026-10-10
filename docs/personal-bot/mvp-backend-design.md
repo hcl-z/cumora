@@ -29,14 +29,14 @@ MVP 不做：IM 入口、OAuth 连接器、需要登录的浏览器、能力之�
 | 代码沙箱 | `sandbox-exec`（macOS Seatbelt，见 6.4） | 独立的 `sandbox-runner` 服务，按需启动一次性容器 |
 | 凭证库主密钥 | macOS 钥匙串（用 `security` 命令读写） | Docker secret `vault_master_key` |
 | 登录 | 本机登录：server 只监听 127.0.0.1 时启用，见 2.3 | OAuth（GitHub 或 Google） |
-| bootstrap 配对 | `.env.local` 里的 `PERSONAL_BOOTSTRAP_TOKEN` | Docker secret `personal_bootstrap_token` |
+| bootstrap 配对 | `.env` 里的 `PERSONAL_BOOTSTRAP_TOKEN` | Docker secret `personal_bootstrap_token` |
 
 ### 2.1 开发环境（本机 Mac）
 
 ```bash
 brew install postgresql@16 redis && brew services start postgresql@16 redis
 createdb cumora && npm run setup
-cp deploy/personal/.env.local.example .env.local   # 填 OPENAI_API_KEY；PERSONAL_MODE=1
+cp deploy/personal/dev.env.example .env            # 填 OPENAI_API_KEY；PERSONAL_MODE=1（env.ts 用 dotenv 读根目录 .env）
 npm run dev:all                                     # 也可以用 npm run electron:dev
 ./bin/cumora agent computer --server http://localhost:5181   # 没有配对时自动走 bootstrap 配对
 ```
@@ -121,7 +121,7 @@ server/src/personal/          server 侧
   onboard.ts                  onboardPersonal
 server/src/broker/            daemon 侧，见第 6 节
 server/src/agents/computer/loop/   daemon 侧，见第 5 节
-deploy/personal/              .env.local.example（开发）、docker-compose.yml、low-mem.override.yml、
+deploy/personal/              dev.env.example 和 README（开发）、docker-compose.yml、low-mem.override.yml、
                               server / daemon / sandbox 三个 Dockerfile、sandbox-runner、seatbelt profile
 ```
 
@@ -847,7 +847,7 @@ agent 级的 wake-stream 新增两种事件：`capability.run`（有新的能力
 
 ### 13.1 首次启动
 
-1. 启动后，server 和 daemon 读到同一个 bootstrap token。开发环境从 `.env.local` 的 `PERSONAL_BOOTSTRAP_TOKEN` 读取，上线环境从 Docker secret `personal_bootstrap_token` 读取。
+1. 启动后，server 和 daemon 读到同一个 bootstrap token。开发环境从根目录 `.env` 的 `PERSONAL_BOOTSTRAP_TOKEN` 读取，上线环境从 Docker secret `personal_bootstrap_token` 读取。
 2. 第一个用户登录后（开发环境用本机登录，上线环境用 OAuth），现有逻辑会为他创建个人工作区。随后 `onboardPersonal(companyId)` 执行以下几步：
    - 创建 Chief bot。它是一个 participant，`kind='agent'`、`engine='loop'`，persona 是"幕僚长"。
    - 创建群聊"总群"，成员是你和 Chief bot。
@@ -888,7 +888,7 @@ Chief bot 预置一个平台级技能 `create-capability`，属于"元能力"，
 
 | 周 | 后端 | 可以开始联调的前端 |
 |---|---|---|
-| 1 | 搭好本机开发环境，写 `.env.local.example`；PERSONAL_MODE 和本机登录；迁移 0011、0012；`onboardPersonal` 和 bootstrap 配对 | 初始化引导 |
+| 1 | 搭好本机开发环境，写 `dev.env.example`；PERSONAL_MODE 和本机登录；迁移 0011、0012；`onboardPersonal` 和 bootstrap 配对 | 初始化引导 |
 | 2 | loop 引擎：provider、循环、`cumora` 和文件类工具、会话持久化、移植 turn.ts 的机制；跑通 chain 和 counting | 无 |
 | 3 | Broker 骨架：scope、authorize、HTTP 执行器、证据库、脱敏；凭证库和设备事件流 | 连接器列表和接入向导 |
 | 4 | MCP 执行器和发现；`sandbox.exec` 的 seatbelt 实现；`web.fetch` | 连接器详情和试调用 |

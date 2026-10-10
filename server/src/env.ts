@@ -6,6 +6,7 @@
  *  environment win over those in `.env` (dotenv default), so deployment
  *  doesn't need a file. */
 import 'dotenv/config'
+import { parsePersonalMode } from './personal/mode.js'
 
 function required(name: string, fallback?: string): string {
   const v = process.env[name] ?? fallback
@@ -104,6 +105,13 @@ export const env = {
    * Default 'off' (opt-in) — set ROUTING_ONE_OF_US=true to enable.
    */
   ROUTING_ONE_OF_US: /^(true|1|yes|on)$/i.test(process.env.ROUTING_ONE_OF_US ?? ''),
+  /**
+   * Single-user personal deployment (docs/personal-bot). When on, the demo
+   * seed, the starter team and its boot backfills are skipped, and no managed
+   * Cumora Cloud pod is ever spawned — every bot runs on the paired daemon.
+   * Default off: upstream multi-tenant behaviour is unchanged.
+   */
+  PERSONAL_MODE: parsePersonalMode(process.env.PERSONAL_MODE),
   /**
    * Minimum interval (ms) between alerts that share the same
    * (label, error-fingerprint). Defaults to 60s — protects the webhook
