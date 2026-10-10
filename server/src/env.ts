@@ -7,6 +7,7 @@
  *  doesn't need a file. */
 import 'dotenv/config'
 import { parsePersonalMode } from './personal/mode.js'
+import { localLoginConfigErrors } from './personal/local-login.js'
 
 function required(name: string, fallback?: string): string {
   const v = process.env[name] ?? fallback
@@ -112,6 +113,17 @@ export const env = {
    * Default off: upstream multi-tenant behaviour is unchanged.
    */
   PERSONAL_MODE: parsePersonalMode(process.env.PERSONAL_MODE),
+  /** Dev-only one-time login link printed at boot (personal/local-login.ts).
+   *  Refused at boot unless PERSONAL_MODE is on, NODE_ENV is not production
+   *  and LISTEN_HOST is a loopback address. */
+  PERSONAL_LOCAL_LOGIN: /^(true|1|yes|on)$/i.test(process.env.PERSONAL_LOCAL_LOGIN ?? ''),
+  /** Address `server.listen` binds to. Empty (default) keeps Node's
+   *  all-interfaces behaviour. */
+  LISTEN_HOST: (process.env.LISTEN_HOST ?? '').trim(),
+  /** Email recorded on the account local login creates. Set it to the address
+   *  you will later sign in with via OAuth so that identity links to this
+   *  account instead of being refused as a second user. */
+  PERSONAL_OWNER_EMAIL: (process.env.PERSONAL_OWNER_EMAIL ?? '').trim() || 'owner@personal.local',
   /**
    * Minimum interval (ms) between alerts that share the same
    * (label, error-fingerprint). Defaults to 60s — protects the webhook
@@ -496,6 +508,22 @@ export const env = {
 // JWT with a value anyone can read in the repo — a full agent/tenant
 // impersonation bypass. Fail closed, loudly, at startup rather than serve
 // forgeable tokens.
+// Local login hands out a session to whoever can open the printed link, so it
+// is only allowed where "whoever" is this machine. Same fail-closed shape as
+// the production-secret gate below.
+{
+  const errors = localLoginConfigErrors({
+    enabled: env.PERSONAL_LOCAL_LOGIN,
+    personalMode: env.PERSONAL_MODE,
+    nodeEnv: env.NODE_ENV,
+    listenHost: env.LISTEN_HOST,
+  })
+  if (errors.length > 0) {
+    for (const e of errors) console.error(`[env] ${e} — refusing to start.`)
+    process.exit(1)
+  }
+}
+
 if (env.NODE_ENV === 'production') {
   if (env.AGENT_RUNTIME_SECRET === DEV_AGENT_RUNTIME_SECRET) {
     console.error(

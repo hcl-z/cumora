@@ -39,6 +39,7 @@ import { audit, createSession, gravatarUrlForEmail } from './auth.js'
 // without the DB/redis graph.
 export { SignInError, publicSignInError } from './auth-errors.js'
 import { SignInError } from './auth-errors.js'
+import { personalSeatTaken } from './personal/owner.js'
 import { onboardStarterAgents, joinAllHands } from './onboardCompany.js'
 import { companyTier } from './tier.js'
 import { ensureCloudComputer, cloudComputerId } from './agents/computer/registry.js'
@@ -454,6 +455,14 @@ export async function findOrCreateUserByProfile(
         await client.query('COMMIT')
         return await finalize(existing, profile)
       }
+    }
+
+    // Personal mode admits one account. Checked before the waitlist so a
+    // second person is refused outright rather than queued for a seat that
+    // will never open; Paths A/B above still let the owner back in.
+    if (env.PERSONAL_MODE && await personalSeatTaken(client)) {
+      await client.query('ROLLBACK').catch(() => {})
+      throw new SignInError('personal_single_user')
     }
 
     // Path C: brand new user. If the waitlist gate is on AND this email

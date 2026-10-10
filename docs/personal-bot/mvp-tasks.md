@@ -51,16 +51,16 @@ flowchart LR
 
 依赖：无。需要人做的部分：安装 Homebrew、Postgres、Redis，提供 `OPENAI_API_KEY`。
 
-### T02 单用户本机登录 · AFK · S
+### T02 单用户本机登录 · AFK · S ⏸
 
 做什么：设置 `PERSONAL_LOCAL_LOGIN=1`，并且 server 只监听 127.0.0.1 时，启动后在终端打印一次性登录链接，打开就能进入前端。另外，在 PERSONAL_MODE 下，第二个用户无论走哪种方式都无法注册，也不能新建工作区。
 
 验收：
-- [ ] 登录链接 10 分钟后失效，用过一次就失效。
-- [ ] 前端能读取 `#login=` 参数，完成登录。
-- [ ] 同时设置 `NODE_ENV=production` 和本机登录，或者监听地址不是回环地址时，server 拒绝启动。
-- [ ] 第二个 OAuth 用户被拒绝；新建工作区的接口返回 403。
-- [ ] 以上各项都有单元测试。
+- [x] 登录链接 10 分钟后失效，用过一次就失效（`personal-local-login.test.ts`）。
+- [x] 前端能读取 `#login=` 参数，完成登录：`AuthGate` 在模块加载时读取并清掉片段，换取会话；StrictMode 下也只消费一次。⏸ 需要真实环境在浏览器里走一遍，和 T01 的启动验证一起补。
+- [x] 同时设置 `NODE_ENV=production` 和本机登录，或者监听地址不是回环地址时，server 拒绝启动。`LISTEN_HOST` 必须是字面量回环地址，`localhost` 也会被拒绝。
+- [x] 第二个用户被拒绝：OAuth 新用户、等候名单审批、本机登录三条创建用户的路径都先经过同一个占位检查（`personal/owner.ts`，带事务级 advisory lock）；新建工作区的接口返回 403。
+- [x] 以上各项都有单元测试。新建工作区的 403 是接口开头的一行判断，没有单独写路由测试。
 
 依赖：T01。
 

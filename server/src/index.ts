@@ -35,6 +35,7 @@ import { seedAdmins } from './admin.js'
 import { notifyAlert } from './alerting.js'
 import { startShippingMaintenance } from './shipping-maintenance.js'
 import { startRealtimeOutboxWorker, stopRealtimeOutboxWorker } from './realtime-outbox.js'
+import { localLoginUrl } from './personal/local-login.js'
 import { startWorkspaceCleanupWorker, stopWorkspaceCleanupWorker } from './workspace-cleanup.js'
 
 const BOOT_BACKFILL_LOCK_KEY = 7_643_178_926_532n
@@ -228,9 +229,19 @@ async function main() {
   // doc redis channels here so two server instances stay convergent.
   bootDocumentBus()
 
-  server.listen(env.PORT, () => {
-    console.log(`[boot] cumora server :${env.PORT} · instance ${env.INSTANCE_ID} · model ${env.OPENAI_MODEL}`)
-  })
+  const onListening = () => {
+    console.log(`[boot] cumora server ${env.LISTEN_HOST}:${env.PORT} · instance ${env.INSTANCE_ID} · model ${env.OPENAI_MODEL}`)
+    if (env.PERSONAL_LOCAL_LOGIN) {
+      void import('./personal/local-login-tokens.js').then(({ localLoginTokens }) => {
+        const url = localLoginUrl(env.AUTH_DONE_URL, localLoginTokens.issue())
+        console.log(`[personal] one-time login (single use, expires in 10 min): ${url}`)
+      })
+    }
+  }
+  // Pass a host only when one is configured: an explicit '' or undefined is
+  // not the same as omitting it for every Node version we run on.
+  if (env.LISTEN_HOST) server.listen(env.PORT, env.LISTEN_HOST, onListening)
+  else server.listen(env.PORT, onListening)
 
   // Seed and backfill after listen. They used to run first, so a rollout
   // could not become ready until every replica had scanned the tables.

@@ -36,7 +36,7 @@ import { dispatchMessagePush } from '../push.js'
 import { randomUUID, randomBytes, createHash, timingSafeEqual } from 'node:crypto'
 import {
   deleteSession, authMiddleware, type AuthedRequest,
-  audit, createWsTicket, gravatarUrlForEmail,
+  audit, createSession, createWsTicket, gravatarUrlForEmail,
 } from '../auth.js'
 import { joinAllHands, onboardStarterAgents, seedMemberDms } from '../onboardCompany.js'
 import {
@@ -910,6 +910,37 @@ api.post('/auth/apple/native', safe(async (req, res) => {
   }
 }))
 
+/** Personal-mode dev login: trade the one-time token printed at boot for a
+ *  session. Only mounted when PERSONAL_LOCAL_LOGIN passed env.ts's gate, i.e.
+ *  personal mode, non-production, and bound to loopback. */
+if (env.PERSONAL_LOCAL_LOGIN) {
+  api.post('/auth/local-login', safe(async (req, res) => {
+    const { localLoginTokens } = await import('../personal/local-login-tokens.js')
+    const token = typeof req.body?.token === 'string' ? req.body.token : ''
+    if (!token || !localLoginTokens.consume(token)) {
+      res.status(401).json({ error: 'local_login_invalid' }); return
+    }
+    const { ensurePersonalOwner } = await import('../personal/owner.js')
+    const client = await pool.connect()
+    let owner: Awaited<ReturnType<typeof ensurePersonalOwner>>
+    try {
+      await client.query('BEGIN')
+      owner = await ensurePersonalOwner(client, { email: env.PERSONAL_OWNER_EMAIL, displayName: 'Owner' })
+      await client.query('COMMIT')
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {})
+      throw e
+    } finally {
+      client.release()
+    }
+    const ip = req.socket.remoteAddress ?? null
+    const ua = (req.headers['user-agent'] as string | undefined) ?? null
+    const session = await createSession(owner.userId, { ip: ip ?? undefined, ua: ua ?? undefined })
+    await audit({ kind: 'login', userId: owner.userId, companyId: owner.companyId, ip, userAgent: ua, detail: { provider: 'local' } })
+    res.json({ token: session.token, companyId: owner.companyId })
+  }))
+}
+
 api.post('/auth/logout', safe(async (req, res) => {
   const auth = req.headers.authorization
   let token: string | undefined
@@ -1119,6 +1150,7 @@ api.get('/companies', async (req, res) => {
 
 api.post('/companies', async (req, res) => {
   const me = userId(req)
+  if (env.PERSONAL_MODE) { res.status(403).json({ error: 'personal mode has a single workspace' }); return }
   const name = String(req.body?.name ?? '').trim().slice(0, 80)
   if (!name) { res.status(400).json({ error: 'name required' }); return }
   await assertUserCompanyLimit(me)

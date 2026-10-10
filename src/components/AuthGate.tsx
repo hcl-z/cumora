@@ -43,9 +43,30 @@ function consumeOAuthFragment(): CarriedSession | null {
 }
 
 
+/** Personal-mode dev login (`#login=<one-time token>`, printed by the server at
+ *  boot). Read once at module load and scrubbed immediately, and the exchange
+ *  promise is shared, so StrictMode's double-run effects spend the single-use
+ *  token only once. */
+const pendingLocalLogin: string | null = (() => {
+  const params = new URLSearchParams(location.hash.replace(/^#/, ''))
+  const t = params.get('login')
+  if (!t) return null
+  history.replaceState(null, '', location.pathname + location.search)
+  return t
+})()
+let localLoginExchange: Promise<CarriedSession | null> | null = null
+function exchangeLocalLogin(): Promise<CarriedSession | null> | null {
+  if (!pendingLocalLogin) return null
+  localLoginExchange ??= api.authLocalLogin(pendingLocalLogin)
+    .then((r) => ({ token: r.token, companyId: r.companyId }))
+    .catch(() => null)
+  return localLoginExchange
+}
+
 export function AuthGate({ children, unauthFallback }: AuthGateProps) {
   const token = useAuth((s) => s.token)
   const ready = useAuth((s) => s.ready)
+  const [localLoginPending, setLocalLoginPending] = useState(() => pendingLocalLogin !== null)
   const setSession = useAuth((s) => s.setSession)
   const setMe = useAuth((s) => s.setMe)
   const setServerCapabilities = useAuth((s) => s.setServerCapabilities)
@@ -84,6 +105,23 @@ export function AuthGate({ children, unauthFallback }: AuthGateProps) {
     return () => { cancelled = true }
   }, [token, setMe, setServerCapabilities, clear, markReady])
 
+  useEffect(() => {
+    const exchange = exchangeLocalLogin()
+    if (!exchange) return
+    let cancelled = false
+    void exchange.then((carried) => {
+      if (cancelled) return
+      if (carried) {
+        setSession(carried.token, { id: '', email: '', name: '' }, carried.companyId)
+      } else {
+        // Same `#error=` fragment the OAuth callback uses, so AuthScreen shows it.
+        history.replaceState(null, '', `${location.pathname}${location.search}#error=local_login_invalid`)
+      }
+      setLocalLoginPending(false)
+    })
+    return () => { cancelled = true }
+  }, [setSession])
+
   // Electron-only: listen for OAuth tokens forwarded by the main
   // process. The user clicked "Continue with Google" → we opened the
   // system browser → provider redirected through our server to
@@ -114,7 +152,7 @@ export function AuthGate({ children, unauthFallback }: AuthGateProps) {
     return () => window.removeEventListener('cumora:oauth-token', handler)
   }, [setSession])
 
-  if (!ready) {
+  if (!ready || localLoginPending) {
     // Brief loading flash while we probe — keeps the app from flashing
     // login → main on a valid token reload.
     return (

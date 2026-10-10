@@ -28,6 +28,7 @@ import { companyTier } from './tier.js'
 import { ensureCloudComputer, cloudComputerId } from './agents/computer/registry.js'
 import { mirrorAvatar } from './oauth.js'
 import { insertPersonalWorkspace } from './personal-workspace.js'
+import { personalSeatTaken } from './personal/owner.js'
 import { provisionUser as provisionSub2apiUser, sub2apiConfigured, setUserTier } from './sub2api.js'
 import { formatAddress, mintMessageId, sendViaProvider } from './email.js'
 
@@ -496,6 +497,9 @@ export async function approveWaitlist(waitlistId: string, decidedBy: string): Pr
     const row = r.rows[0]
     if (!row) throw new HttpError(404, 'waitlist entry not found')
     if (row.status !== 'pending') throw new HttpError(409, `already ${row.status}`)
+    if (env.PERSONAL_MODE && await personalSeatTaken(client)) {
+      throw new HttpError(409, 'personal mode admits a single account; reject this entry')
+    }
 
     // Reject if a user with this email already exists (somehow another
     // provider sign-in materialized them while they were waiting). We

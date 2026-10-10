@@ -69,8 +69,8 @@ npm run dev:all                                     # 也可以用 npm run elect
 
 | 行为 | 位置 |
 |---|---|
-| 只允许第一个通过 OAuth 登录的用户注册，之后的新用户一律拒绝 | `oauth.ts:459-490` |
-| 本机登录（仅用于开发）：只有同时满足 `PERSONAL_LOCAL_LOGIN=1` 且 server 只监听 127.0.0.1 时才启用。启动时在终端打印一个一次性的登录链接 `http://localhost:5180/#login=<token>`，有效期 10 分钟，用完即失效。如果 `NODE_ENV=production`，或者监听地址不是本机回环地址，server 拒绝启动 | 新增 `server/src/personal/local-login.ts`；登录成功后调用现有的 `createSession`（`auth.ts:53`） |
+| 只允许一个账号：OAuth 新用户（Path C，排在等候名单检查之前）、等候名单审批、本机登录这三条创建用户的路径，都先经过同一个占位检查；已有账号时，前两条分别返回 `SignInError('personal_single_user')` 和 409。已有的账号仍可以通过 Path A/B 登录 | `server/src/personal/owner.ts` 的 `personalSeatTaken`（事务级 advisory lock）；调用点在 `oauth.ts` 和 `admin.ts` 的 `approveWaitlist` |
+| 本机登录（仅用于开发）：`PERSONAL_LOCAL_LOGIN=1` 时，启动后在终端打印一次性登录链接 `<CUMORA_AUTH_DONE_URL>#login=<token>`，有效期 10 分钟，只能用一次。token 放在 URL 片段里，不会进入任何服务端日志。前端读到后调用 `POST /api/auth/local-login` 换取会话：第一次登录时创建账号和工作区，账号邮箱取 `PERSONAL_OWNER_EMAIL`；之后的登录都进入这个账号。如果没开 PERSONAL_MODE、`NODE_ENV=production`，或者 `LISTEN_HOST` 不是字面量回环地址（`127.x.x.x` 或 `::1`，`localhost` 也会被拒绝），server 拒绝启动 | `server/src/personal/local-login.ts`（启动检查和 token 规则）、`local-login-tokens.ts`（进程内单例）；env.ts 里的启动检查；`AuthGate.tsx` 处理 `#login=` |
 | 禁止新建工作区 | `router.ts` 里的工作区创建路由 |
 | 不执行 `onboardStarterAgents`（`onboardCompany.ts:113`），改为执行 `onboardPersonal`（见 13 节） | `onboardCompany.ts` |
 | 不调用 K8s orchestrator：scheduler 遇到 cloud 类型的 agent 直接跳过（不会出现，因为 personal 模式下所有 bot 都分配在本地那台 daemon 所在的 computer 上） | `scheduler.ts` 中调用 `ensurePod` 的地方（`:622`） |

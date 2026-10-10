@@ -1342,6 +1342,12 @@ export const api = {
   /** Browser sign-in providers this deployment has credentials for. Used to
    *  avoid rendering a button that can only 503. */
   authProviders: () => http<{ providers: string[] }>('/auth/providers'),
+  /** Personal-mode dev login: exchange the one-time `#login=` token printed by
+   *  the server at boot for a session. */
+  authLocalLogin: (token: string) =>
+    http<{ token: string; companyId: string | null }>('/auth/local-login', {
+      method: 'POST', body: JSON.stringify({ token }),
+    }),
   getPreferences: () => http<Record<string, unknown>>('/me/preferences'),
   putPreferences: (prefs: Record<string, unknown>) =>
     http<{ ok: boolean }>('/me/preferences', { method: 'PUT', body: JSON.stringify(prefs) }),
