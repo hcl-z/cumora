@@ -53,6 +53,10 @@ async function runBootBackfill(): Promise<void> {
       await backfillStarterAgents()
       await backfillHumanGravatars()
       await backfillStarterAvatars()
+      if (env.PERSONAL_MODE) {
+        const { backfillPersonalOnboarding } = await import('./personal/onboard.js')
+        await backfillPersonalOnboarding()
+      }
     } finally {
       await client.query('SELECT pg_advisory_unlock($1)', [BOOT_BACKFILL_LOCK_KEY])
         .catch(() => { /* session teardown releases it anyway */ })

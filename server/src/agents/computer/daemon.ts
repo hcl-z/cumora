@@ -1568,7 +1568,34 @@ async function detectHostName(): Promise<string> {
   return base || 'My computer'
 }
 
-async function doPair(code: string, serverUrl: string, preferredEngine?: string): Promise<void> {
+function personalBootstrapToken(): string {
+  return (process.env.CUMORA_PERSONAL_BOOTSTRAP_TOKEN ?? '').trim()
+}
+
+/** Personal mode: pair as the workspace's first computer with the deployment's
+ *  shared secret. A 409 means the owner has not signed in yet, so the account
+ *  to pair into does not exist; wait for it instead of exiting. */
+async function doBootstrapPair(token: string, serverUrl: string, preferredEngine?: string): Promise<void> {
+  const BOOTSTRAP_RETRY_MS = 15_000
+  for (;;) {
+    try {
+      await doPair('', serverUrl, preferredEngine, token)
+      return
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (!msg.includes('HTTP 409')) {
+        if (msg.includes('HTTP 410')) {
+          throw new Error('this workspace already has a paired computer; re-pair with its reconnect code: cumora agent computer --pair <code>')
+        }
+        throw err
+      }
+      console.log(`[computer] waiting for the owner's first sign-in before pairing — retrying in ${BOOTSTRAP_RETRY_MS / 1000}s`)
+      await new Promise((resolve) => setTimeout(resolve, BOOTSTRAP_RETRY_MS))
+    }
+  }
+}
+
+async function doPair(code: string, serverUrl: string, preferredEngine?: string, bootstrapToken?: string): Promise<void> {
   const evaluated = await requireLocalEngine(preferredEngine)
   const runnable = evaluated.runnable
   // The chosen engine becomes this computer's DEFAULT — it's sent first in the
@@ -1584,12 +1611,13 @@ async function doPair(code: string, serverUrl: string, preferredEngine?: string)
     ...await snapshotDetectedEngines(engines),
     ...await blockedSnapshotRows(evaluated.blocked),
   ]
+  const pairBody = {
+    hostName: await detectHostName(), engines, detected: snapshot,
+    blocked: blockedIds, version: CURRENT_VERSION, supervised: SUPERVISED,
+  }
   const paired = await api<{ computerId: string; deviceToken: string }>(
-    serverUrl, '/api/computers/pair',
-    { method: 'POST', body: JSON.stringify({
-      code, hostName: await detectHostName(), engines, detected: snapshot,
-      blocked: blockedIds, version: CURRENT_VERSION, supervised: SUPERVISED,
-    }) },
+    serverUrl, bootstrapToken ? '/api/personal/bootstrap-pair' : '/api/computers/pair',
+    { method: 'POST', body: JSON.stringify(bootstrapToken ? { token: bootstrapToken, ...pairBody } : { code, ...pairBody }) },
   )
   await saveConfig({ serverUrl, computerId: paired.computerId, deviceToken: paired.deviceToken })
   console.log(`[computer] paired as ${paired.computerId} (default engine: ${engines[0] ?? 'none'}; available: ${engines.join(', ') || 'none'}) — starting…`)
@@ -4685,6 +4713,12 @@ export async function runComputerDaemon(argv: string[]): Promise<void> {
   // pair AND hand off to the supervisor in one paste.
   if (args.pair) {
     await doPair(args.pair, serverUrl, args.engine)
+  } else if (!(await loadConfig()) && personalBootstrapToken()) {
+    // Personal deployment: the bundled daemon pairs itself on first start.
+    // The secret only ever goes to a server the operator named explicitly.
+    const target = (args.server || process.env.CUMORA_SERVER_URL || '').replace(/\/+$/, '')
+    if (!target) throw new Error('CUMORA_PERSONAL_BOOTSTRAP_TOKEN is set but no server was given: pass --server <url> or set CUMORA_SERVER_URL')
+    await doBootstrapPair(personalBootstrapToken(), target, args.engine)
   }
   // Installing the service is terminal: it writes the supervisor (which runs
   // the daemon itself) and exits — we don't ALSO run a foreground daemon here.

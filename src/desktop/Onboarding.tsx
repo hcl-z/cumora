@@ -7,6 +7,7 @@ import { RUNNABLE_ENGINES, engineLabel, type RunnableEngineId } from '@/lib/engi
 import { useAuth } from '@/stores/auth'
 import { usePairingCodes } from '@/stores/pairing-codes'
 import { copyText } from '@/lib/clipboard'
+import { PersonalOnboarding } from '@/desktop/PersonalOnboarding'
 
 /**
  * First-run gate for free-tier users: their agents run on their own machine
@@ -16,6 +17,12 @@ import { copyText } from '@/lib/clipboard'
  * it. Starter agents are seeded server-side onto that computer at pair time.
  */
 export function Onboarding() {
+  // Personal mode pairs its own daemon; there is no code for the owner to copy.
+  const personalMode = useAuth((s) => s.serverCapabilities?.personalMode === true)
+  return personalMode ? <PersonalOnboarding /> : <PairComputerOnboarding />
+}
+
+function PairComputerOnboarding() {
   const t = useT()
   const companyId = useAuth((s) => s.activeCompanyId)
   const companyRole = useAuth((s) => s.companies.find((company) => company.id === s.activeCompanyId)?.role)

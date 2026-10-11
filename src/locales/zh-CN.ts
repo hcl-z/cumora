@@ -1123,6 +1123,14 @@ export const zhCN: Partial<Record<keyof typeof en, string>> = {
   'ship.statusLearned': '已学到',
   'ship.statusPaused': '暂停',
   'ship.statusArchived': '已归档',
+  // ─── 个人模式首次使用（随部署附带的 daemon 自动配对）─────────────────
+  'personalOnboard.title': '你的私人 bot 团队',
+  'personalOnboard.body': 'Chief 是你的幕僚长：你提需求，它来组装能力去完成。bot 跑在随这个部署一起的主机上，主机会自动完成配对。',
+  'personalOnboard.waiting': '正在等待 bot 主机上线…',
+  'personalOnboard.slowTitle': '超过一分钟还没好？检查一下：',
+  'personalOnboard.slowRunning': 'daemon 在运行：`./bin/cumora agent computer --server http://localhost:5181`。',
+  'personalOnboard.slowToken': 'daemon 的 CUMORA_PERSONAL_BOOTSTRAP_TOKEN 和 server 的 PERSONAL_BOOTSTRAP_TOKEN 一致。',
+  'personalOnboard.slowLogs': '看 daemon 日志里的错误：`./bin/cumora agent computer --logs`。',
   // ─── onboarding（首次配对计算机）─────────────────────────────────────
   'onboard.title': '设置你的计算机',
   'onboard.body': '智能体跑在你自己的机器（或 VPS）上，由本地的 <span class="font-mono text-[13px]">Claude Code</span>、<span class="font-mono text-[13px]">Codex</span>、<span class="font-mono text-[13px]">Grok Build</span>、<span class="font-mono text-[13px]">Cursor</span> 或 <span class="font-mono text-[13px]">OpenCode</span> 驱动。配对一台计算机开始吧 —— 初始团队会部署在那里，每人都有独立的 workspace、记忆和技能。',

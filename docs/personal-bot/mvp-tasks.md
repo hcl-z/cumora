@@ -64,15 +64,16 @@ flowchart LR
 
 依赖：T01。
 
-### T03 个人模式初始化：Chief bot、总群和自动配对 · AFK · M
+### T03 个人模式初始化：Chief bot、总群和自动配对 · AFK · M ⏸
 
 做什么：首次登录后自动执行 `onboardPersonal`，创建 Chief bot、"总群"、你和 Chief 的私聊。daemon 在没有 `computer.json` 时，用 bootstrap token 自动配对，然后把 Chief 分配给自己。这个阶段 Chief 暂时用现有的 `claude` 引擎，先保证整条链路能跑通。前端做三步引导页。
 
 验收：
-- [ ] 空库首次登录后，能看到总群和 Chief，在总群里 @Chief 会收到回复。
-- [ ] bootstrap 接口校验 token 时用常量时间比较；配对成功后接口返回 410；PERSONAL_MODE 关闭时这个接口不存在。
-- [ ] 重启 server 不会重复初始化（`personal_seeded_at` 标记生效）。
-- [ ] 引导页在 60 秒内没配对成功时，显示排查提示。
+- [x] 空库首次登录后，能看到总群和 Chief：Chief、置顶的总群（成员是你和 Chief）、私聊都会创建（集成测试 `personal-onboarding.test.ts`，跑在真实的 Postgres 上）。⏸ "在总群里 @Chief 会收到回复"需要 Redis 和正在运行的 daemon，和 T01、T02 一起补验。
+- [x] bootstrap 接口校验 token 时用常量时间比较；配对成功后接口返回 410；PERSONAL_MODE 关闭时这个接口不存在。另外：没有主人时返回 409，daemon 收到后等待重试；密钥少于 32 个字符时 server 拒绝启动。
+- [x] 重启 server 不会重复初始化：`personal_seeded_at` 生效，并发的首次登录也只生成一个 Chief；启动回填会把中途中断的初始化补完。
+- [x] 引导页在 60 秒内没配对成功时，显示排查提示：个人模式下显示等待主机的页面，不显示配对码。⏸ 需要在浏览器里看一遍。
+- 偏差：引导页只做了两段（说明加主机状态），没做成三步。配对成功后，现有的 gate 会自动切到主界面，第三步"进入总群"就是这一跳。Chief 的第一条欢迎消息没有做，T16 给 Chief 预置技能时一起加。
 
 依赖：T02。
 

@@ -43,6 +43,21 @@ Open it in the browser. The first login creates the deployment's only account an
 
 The API binds to `127.0.0.1` here. If the Vite proxy cannot reach it because `localhost` resolves to `::1` first on your machine, start Vite with `CUMORA_DEV_API_TARGET=http://127.0.0.1:5181`.
 
+## First sign-in and the bot host
+
+The first sign-in creates the Chief bot, a pinned "总群" group with you and Chief, and your DM with Chief. Until a computer is paired the app shows a waiting screen.
+
+Pair the daemon on this machine with the bootstrap secret instead of a pairing code. The daemon does not read `.env`, so pass the secret in its environment:
+
+```bash
+CUMORA_PERSONAL_BOOTSTRAP_TOKEN="$(grep ^PERSONAL_BOOTSTRAP_TOKEN= .env | cut -d= -f2-)" \
+  ./bin/cumora agent computer --server http://127.0.0.1:5181
+```
+
+With no `~/.cumora/computer.json` it pairs itself, waiting and retrying every 15 seconds if you have not signed in yet, and every bot without a computer moves onto it. The secret only works for the workspace's first computer: once one is paired the endpoint answers 410, and re-pairing uses that computer's reconnect code like any Cumora computer. It is never sent to a server you did not name with `--server` or `CUMORA_SERVER_URL`.
+
+In this task the Chief runs on whichever local engine the daemon picks (Claude Code by default). The built-in `loop` engine replaces that in T04.
+
 ## Tests
 
 ```bash

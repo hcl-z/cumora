@@ -935,9 +935,49 @@ if (env.PERSONAL_LOCAL_LOGIN) {
     }
     const ip = req.socket.remoteAddress ?? null
     const ua = (req.headers['user-agent'] as string | undefined) ?? null
+    if (owner.companyId) {
+      const { onboardPersonal } = await import('../personal/onboard.js')
+      try { await onboardPersonal(owner.companyId) }
+      catch (e) { console.warn('[personal] onboarding at local login failed', e) }
+    }
     const session = await createSession(owner.userId, { ip: ip ?? undefined, ua: ua ?? undefined })
     await audit({ kind: 'login', userId: owner.userId, companyId: owner.companyId, ip, userAgent: ua, detail: { provider: 'local' } })
     res.json({ token: session.token, companyId: owner.companyId })
+  }))
+}
+
+/** Personal-mode bootstrap pairing: the bundled daemon pairs itself as the
+ *  workspace's first computer with PERSONAL_BOOTSTRAP_TOKEN instead of a
+ *  copied pairing code. Not mounted unless both are configured. */
+if (env.PERSONAL_MODE && env.PERSONAL_BOOTSTRAP_TOKEN) {
+  api.post('/personal/bootstrap-pair', safe(async (req, res) => {
+    const { bootstrapTokenMatches } = await import('../personal/bootstrap-token.js')
+    const token = typeof req.body?.token === 'string' ? req.body.token : ''
+    if (!bootstrapTokenMatches(env.PERSONAL_BOOTSTRAP_TOKEN, token)) {
+      res.status(403).json({ error: 'invalid bootstrap token' }); return
+    }
+    const engines = Array.isArray(req.body?.engines)
+      ? (req.body.engines as unknown[]).filter((e): e is string => typeof e === 'string')
+      : []
+    const blocked = Array.isArray(req.body?.blocked)
+      ? (req.body.blocked as unknown[]).filter((e): e is string => typeof e === 'string')
+      : []
+    const { bootstrapPair } = await import('../personal/bootstrap.js')
+    const r = await bootstrapPair({
+      hostName: typeof req.body?.hostName === 'string' ? req.body.hostName : undefined,
+      engines,
+      detected: req.body?.detected,
+      blocked,
+      version: typeof req.body?.version === 'string' ? req.body.version : undefined,
+      supervised: typeof req.body?.supervised === 'boolean' ? req.body.supervised : undefined,
+    })
+    if (r.status === 'no_owner') { res.status(409).json({ error: 'sign in once before the daemon can pair' }); return }
+    if (r.status === 'already_paired') {
+      res.status(410).json({ error: 'this workspace already has a computer; re-pair with its reconnect code' }); return
+    }
+    if (r.status === 'invalid') throw new HttpError(500, 'bootstrap pairing failed')
+    await announceComputerOnline(r.computerId, r.companyId)
+    res.json({ computerId: r.computerId, companyId: r.companyId, deviceToken: r.deviceToken })
   }))
 }
 
@@ -1089,6 +1129,7 @@ api.get('/auth/me', safe(async (req, res) => {
     // box that will always fail. Add other capabilities here as needed.
     serverCapabilities: {
       invitationEmail: !!env.EMAIL_DOMAIN,
+      personalMode: env.PERSONAL_MODE,
     },
   })
 }))

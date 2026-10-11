@@ -588,6 +588,9 @@ export interface ServerCapabilities {
    *  Driven by EMAIL_DOMAIN being set on the server. The invite modal
    *  hides the "Email this invite" checkbox when false. */
   invitationEmail: boolean
+  /** Single-user personal deployment (PERSONAL_MODE). Optional so an older
+   *  server that omits it reads as off. */
+  personalMode?: boolean
 }
 
 export type ApiInvitationStatus = 'active' | 'revoked' | 'expired' | 'consumed'

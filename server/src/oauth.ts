@@ -40,6 +40,7 @@ import { audit, createSession, gravatarUrlForEmail } from './auth.js'
 export { SignInError, publicSignInError } from './auth-errors.js'
 import { SignInError } from './auth-errors.js'
 import { personalSeatTaken } from './personal/owner.js'
+import { onboardPersonal } from './personal/onboard.js'
 import { onboardStarterAgents, joinAllHands } from './onboardCompany.js'
 import { companyTier } from './tier.js'
 import { ensureCloudComputer, cloudComputerId } from './agents/computer/registry.js'
@@ -550,6 +551,9 @@ export async function findOrCreateUserByProfile(
           await onboardStarterAgents(companyId, { computerId: cloudComputerId(companyId), engine: 'managed' })
         }
       } catch (e) { console.warn('[oauth] starter onboarding failed', e) }
+      if (env.PERSONAL_MODE) {
+        try { await onboardPersonal(companyId) } catch (e) { console.warn('[oauth] personal onboarding failed', e) }
+      }
       try { await joinAllHands({ companyId, participantId: userId }) } catch (e) { console.warn('[oauth] join all-hands failed', e) }
     }
 

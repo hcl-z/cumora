@@ -1122,6 +1122,14 @@ export const en = {
   'ship.statusLearned': 'Learned',
   'ship.statusPaused': 'Paused',
   'ship.statusArchived': 'Archived',
+  // ─── personal-mode first run (bundled daemon pairs itself) ─────────
+  'personalOnboard.title': 'Your private bot team',
+  'personalOnboard.body': 'Chief is your chief of staff: tell it what you need and it assembles the capabilities to do it. Your bots run on the host that came with this deployment, which pairs itself automatically.',
+  'personalOnboard.waiting': 'Waiting for the bot host to come online…',
+  'personalOnboard.slowTitle': 'Taking longer than a minute? Check:',
+  'personalOnboard.slowRunning': 'The daemon is running: `./bin/cumora agent computer --server http://localhost:5181`.',
+  'personalOnboard.slowToken': 'CUMORA_PERSONAL_BOOTSTRAP_TOKEN in the daemon matches PERSONAL_BOOTSTRAP_TOKEN on the server.',
+  'personalOnboard.slowLogs': 'The daemon log for errors: `./bin/cumora agent computer --logs`.',
   // ─── onboarding (first-run computer pairing) ─────────────────────
   'onboard.title': 'Set up your computer',
   'onboard.body': 'Your agents run on <strong>your own machine</strong> (or a VPS), powered by your local <span class="font-mono text-[13px]"> Claude Code</span>, <span class="font-mono text-[13px]"> Codex</span>, <span class="font-mono text-[13px]"> Grok Build</span>, <span class="font-mono text-[13px]"> Cursor</span>, or <span class="font-mono text-[13px]"> OpenCode</span>. Pair a computer to get started — your starter team will set up there, each with its own isolated workspace, memory, and skills.',

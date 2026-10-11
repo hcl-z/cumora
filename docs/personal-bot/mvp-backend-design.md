@@ -847,14 +847,14 @@ agent 级的 wake-stream 新增两种事件：`capability.run`（有新的能力
 
 ### 13.1 首次启动
 
-1. 启动后，server 和 daemon 读到同一个 bootstrap token。开发环境从根目录 `.env` 的 `PERSONAL_BOOTSTRAP_TOKEN` 读取，上线环境从 Docker secret `personal_bootstrap_token` 读取。
-2. 第一个用户登录后（开发环境用本机登录，上线环境用 OAuth），现有逻辑会为他创建个人工作区。随后 `onboardPersonal(companyId)` 执行以下几步：
-   - 创建 Chief bot。它是一个 participant，`kind='agent'`、`engine='loop'`，persona 是"幕僚长"。
-   - 创建群聊"总群"，成员是你和 Chief bot。
-   - 创建你和 Chief bot 的私聊。
-   - 在 `companies` 表上打标记 `personal_seeded_at`，保证初始化只做一次。
-3. daemon 启动时，如果 `~/.cumora/computer.json` 还不存在，就调用 `POST /api/personal/bootstrap-pair`，凭 bootstrap token 换取设备凭证。这一步复用 `/api/computers/pair` 的内部逻辑。配对成功后，把 Chief bot 分配到这台 computer。
-4. 这个接口只在 `PERSONAL_MODE` 下注册。token 校验必须使用常量时间比较；配对成功一次后，接口返回 410，不再可用。
+1. server 和 daemon 持有同一个 bootstrap 密钥：server 读 `PERSONAL_BOOTSTRAP_TOKEN`，daemon 读 `CUMORA_PERSONAL_BOOTSTRAP_TOKEN`（daemon 不加载 `.env`，所以要另外传入）。开发环境把两者设为同一个值；上线环境都从 Docker secret `personal_bootstrap_token` 读取。密钥少于 32 个字符时，server 拒绝启动。
+2. 第一个用户登录后（开发环境用本机登录，上线环境用 OAuth），会先为他建好个人工作区，再执行 `onboardPersonal(companyId)`（`server/src/personal/onboard.ts`）：
+   - 创建 Chief bot：一个 `kind='agent'` 的 participant，persona 是"幕僚长"，id 带随机后缀（participant id 全局唯一）。`engine` 先留空，配对时取 computer 的默认引擎；T04 之后改为 `loop`。
+   - 创建置顶群聊"总群"，成员是你和 Chief。它同时记为工作区的 `all_hands_conversation_id`，所以之后新建的 bot 和人会通过 `joinAllHands` 自动加入；上游 starter 团队的三个阶段同时标记为已完成，不会再叠加一套。
+   - 创建你和 Chief 的私聊。
+   - Chief 和总群在同一个事务里创建，并锁住 companies 这一行，所以并发的首次登录也只会生成一个 Chief。`personal_chief_agent_id` 记录 Chief 是谁；私聊建好后才写 `personal_seeded_at`，所以中途失败会在下次登录或启动回填时续做，不会重做。这两列来自迁移 0011。
+3. daemon 启动时，如果 `~/.cumora/computer.json` 不存在而密钥已设置，就调用 `POST /api/personal/bootstrap-pair` 换取设备凭证：先签发工作区配对码，再走现有的 `pairComputer`，然后把所有还没放到实体 computer 上的 bot 放到这台机器上。返回 409（主人还没登录过）时，daemon 每 15 秒重试一次。密钥只会发往 `--server` 或 `CUMORA_SERVER_URL` 明确指定的地址，不会发给默认的公有服务器。
+4. 这个接口只在 PERSONAL_MODE 加上配置了密钥时注册。密钥先各自做 SHA-256，再用常量时间比较。工作区已经有一台实体 computer 后，接口返回 410；之后重新配对走那台 computer 的 reconnect code。两个 daemon 同时首次配对时，靠 advisory lock 串行处理。
 
 ### 13.2 Chief bot 的内置技能
 

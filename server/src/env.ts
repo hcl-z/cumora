@@ -8,6 +8,7 @@
 import 'dotenv/config'
 import { parsePersonalMode } from './personal/mode.js'
 import { localLoginConfigErrors } from './personal/local-login.js'
+import { bootstrapTokenError } from './personal/bootstrap-token.js'
 
 function required(name: string, fallback?: string): string {
   const v = process.env[name] ?? fallback
@@ -124,6 +125,10 @@ export const env = {
    *  you will later sign in with via OAuth so that identity links to this
    *  account instead of being refused as a second user. */
   PERSONAL_OWNER_EMAIL: (process.env.PERSONAL_OWNER_EMAIL ?? '').trim() || 'owner@personal.local',
+  /** Shared secret the bundled daemon uses to pair itself as the workspace's
+   *  first computer (personal/bootstrap.ts). Unset disables bootstrap pairing;
+   *  set but shorter than 32 characters refuses to boot. */
+  PERSONAL_BOOTSTRAP_TOKEN: (process.env.PERSONAL_BOOTSTRAP_TOKEN ?? '').trim(),
   /**
    * Minimum interval (ms) between alerts that share the same
    * (label, error-fingerprint). Defaults to 60s — protects the webhook
@@ -518,6 +523,8 @@ export const env = {
     nodeEnv: env.NODE_ENV,
     listenHost: env.LISTEN_HOST,
   })
+  const bootstrapError = bootstrapTokenError(env.PERSONAL_BOOTSTRAP_TOKEN)
+  if (bootstrapError) errors.push(bootstrapError)
   if (errors.length > 0) {
     for (const e of errors) console.error(`[env] ${e} — refusing to start.`)
     process.exit(1)
