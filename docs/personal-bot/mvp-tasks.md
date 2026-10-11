@@ -45,7 +45,7 @@ flowchart LR
 验收：
 - [x] `deploy/personal/dev.env.example` 已加入仓库（复制为根目录 `.env`）。
 - [ ] 照着它执行 `npm run dev:all`，server 和 Vite 都能正常启动。⏸ 本机缺 Redis，待你决定 Redis 的提供方式后补验。
-- [x] 开关打开时，演示数据、占位用户、starter 团队和它的启动回填都会跳过（`personal-mode.test.ts` 验证这些路径不发出任何查询）；scheduler 不再调用 `ensurePod`。⏸ 用真实空库启动的验证，和上一条一起补。
+- [x] 开关打开时，演示数据、占位用户、starter 团队和它的启动回填都会跳过（`personal-mode.test.ts` 验证这些路径不发出任何查询）；scheduler 不再调用 `ensurePod`。用真实空库启动的验证已由 T07 的 e2e 冒烟用例覆盖：每次清空 schema，迁移后在个人模式下启动，只会出现 Chief 和总群（CI 运行 38129482127）。
 - [x] 开关关闭时，行为和上游完全一致：改动只是在开关打开时提前返回。
 - [x] 补充开发环境 README：[deploy/personal/README.md](../../deploy/personal/README.md)。uv 沙箱虚拟环境属于 T13，届时再补进去。
 
@@ -69,7 +69,7 @@ flowchart LR
 做什么：首次登录后自动执行 `onboardPersonal`，创建 Chief bot、"总群"、你和 Chief 的私聊。daemon 在没有 `computer.json` 时，用 bootstrap token 自动配对，然后把 Chief 分配给自己。这个阶段 Chief 暂时用现有的 `claude` 引擎，先保证整条链路能跑通。前端做三步引导页。
 
 验收：
-- [x] 空库首次登录后，能看到总群和 Chief：Chief、置顶的总群（成员是你和 Chief）、私聊都会创建（集成测试 `personal-onboarding.test.ts`，跑在真实的 Postgres 上）。⏸ "在总群里 @Chief 会收到回复"需要 Redis 和正在运行的 daemon，和 T01、T02 一起补验。
+- [x] 空库首次登录后，能看到总群和 Chief：Chief、置顶的总群（成员是你和 Chief）、私聊都会创建（集成测试 `personal-onboarding.test.ts`，跑在真实的 Postgres 上）。"在总群里 @Chief 会收到回复"已由 T07 的 e2e 冒烟用例在 CI 里验证：真实的 server 和 daemon，自举配对，模型用回放。
 - [x] bootstrap 接口校验 token 时用常量时间比较；配对成功后接口返回 410；PERSONAL_MODE 关闭时这个接口不存在。另外：没有主人时返回 409，daemon 收到后等待重试；密钥少于 32 个字符时 server 拒绝启动。
 - [x] 重启 server 不会重复初始化：`personal_seeded_at` 生效，并发的首次登录也只生成一个 Chief；启动回填会把中途中断的初始化补完。
 - [x] 引导页在 60 秒内没配对成功时，显示排查提示：个人模式下显示等待主机的页面，不显示配对码。⏸ 需要在浏览器里看一遍。
@@ -83,7 +83,7 @@ flowchart LR
 
 验收：
 - [x] `guard:engine-registry` 通过，`EngineId` 的 3 处定义、`LlmCallSource`、`TriageSource` 都已更新。另外新增 `IN_PROCESS_ENGINE_IDS` 类别：`loop` 没有二进制，所以不走 PATH 检测、版本门槛和 doctor 的 PATH 查找；daemon 有 `OPENAI_API_KEY` 时才算可运行，否则在 Computers 页显示原因。
-- [x] Chief 用 `loop`：初始化时 engine 设为 `loop`，配对时保留。会话单元测试用脚本化的流驱动，验证了调用 Cumora 工具（argv 原样转发，HELD 的 exit 2 交回给模型）、只有终态才结束回合、插话在 hop 边界送达、hop 上限。⏸ 在总群里真的 @Chief 收到回复，需要 Redis、正在运行的 daemon 和真实的 key，留到 T06 一起验。
+- [x] Chief 用 `loop`：初始化时 engine 设为 `loop`，配对时保留。会话单元测试用脚本化的流驱动，验证了调用 Cumora 工具（argv 原样转发，HELD 的 exit 2 交回给模型）、只有终态才结束回合、插话在 hop 边界送达、hop 上限。在总群里 @Chief，经由 loop 引擎和 `mcp__cumora__cli` 收到回复：T07 的 e2e 冒烟用例在 CI 里用回放模型验证通过。⏸ 换成真实模型的回复，等 T06 有 key 时再验。
 - [x] 文件工具不能访问 home 以外的路径，也不能通过符号链接逃出 home：对最近一层已存在的祖先目录做 realpath 再检查，读和写都覆盖了，`loop-tools.test.ts` 有对应测试。
 - [x] `--doctor` 能探测主力模型和辅助模型两档：`probe` 按档位各发一次最小请求；`probeWake` 标为 skipped，因为唤醒路径就是同一个进程内调用。⏸ 真实探测需要 key。
 - [x] 每个 hop 都通过 `onHopUsage` 写进 `llm_calls`（来源记为 `byoa-loop`）。OpenAI 的 usage 换算成 ledger 的字段：未命中缓存的 input 加 cache read。`guard:llm-tracked` 和 `guard:big-brain` 都通过。
@@ -115,13 +115,13 @@ flowchart LR
 
 依赖：T05。需要人做的部分：提供真实的 OpenAI key，并评审结果。
 
-### T07 端到端测试底座 · AFK · M
+### T07 端到端测试底座 · AFK · M ✅
 
 做什么：搭一套 daemon 端到端测试框架，包括录制回放的 fake OpenAI、fake HTTP 连接器、fake MCP 服务器，用脚本一键启动 server 加 daemon。同时在 PR CI 里新增一个 job。后面各个任务的 B 类测试都挂在这套框架上。
 
 验收：
-- [ ] 一条冒烟用例：总群里 @Chief，收到预先录好的回复（`server/src/__e2e__/smoke.e2e.ts`）。⏸ 本机没有 Redis 时用例会跳过，在 CI 里验证。本地只跑到了这一步：清库、迁移、本地登录、Chief 和总群初始化、daemon 自举配对（Chief 保持 `loop`）都正常。
-- [ ] CI job 在 Linux 上通过，总耗时 10 分钟以内（`pr.yml` 的 `e2e` job，`timeout-minutes: 10`）。
+- [x] 一条冒烟用例：总群里 @Chief，收到预先录好的回复（`server/src/__e2e__/smoke.e2e.ts`）。CI 运行 38129482127 里真正执行并通过，用时 4.5 秒，没有跳过。本机没有 Redis 时用例会跳过。
+- [x] CI job 在 Linux 上通过，总耗时 10 分钟以内：`Daemon e2e` job 共 61 秒（`timeout-minutes: 10`）。同一次运行里，单元测试有 Redis 时 1612 个 0 失败，集成测试 443 个 0 失败。
 - 实现说明：
   - fake OpenAI 支持录制和回放。回放时按请求类型匹配：带工具的是 agent hop，不带工具的是 one-shot 调用。还可以按输入正则匹配，正则里的命名分组用 `{{name}}` 代入回复，这样录好的回复能跟着本次运行的会话 id 走。没有匹配上的 agent 请求直接返回 500 并记录下来，用例会失败，而不是等 bot 沉默直到超时。录制模式会把请求转发给真实 API，并把本次运行特有的值替换成占位符。
   - fake HTTP 是一个按路由返回固定内容的服务，会记录所有请求，留给 T08 用。
