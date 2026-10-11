@@ -1,0 +1,69 @@
+server/src/api/router.ts
+  s_3e98741f3cf33e::t_3d87de9a6e5f18 1132
+  s_3e98741f3cf33e::t_41ebe74010a424 938-942,949-980
+src/api/client.ts
+  s_3e98741f3cf33e::t_4a5953c3b86112 591-593
+docs/personal-bot/mvp-backend-design.md
+  s_3e98741f3cf33e::t_bfcb44755b7d6a 850-857
+server/src/index.ts
+  s_3e98741f3cf33e::t_ad736edb31c45f 56-59
+docs/personal-bot/mvp-tasks.md
+  s_3e98741f3cf33e::t_7ef4d2c6762d2a 67,72-76
+src/desktop/PersonalOnboarding.tsx
+  s_3e98741f3cf33e::t_bf219065a86707 1-55
+server/src/__integration__/personal-onboarding.test.ts
+  s_3e98741f3cf33e::t_b68809dae3e507 1-115
+deploy/personal/dev.env.example
+  s_3e98741f3cf33e::t_eb60599a17bb9b 31-37
+server/src/agents/computer/daemon.ts
+  s_3e98741f3cf33e::t_6a77b8bc6d4108 1571-1598
+  s_3e98741f3cf33e::t_d7084b1d55e964 1614-1617,1619-1620
+  s_3e98741f3cf33e::t_e9f5b187bf6fd2 4716-4721
+server/src/oauth.ts
+  s_3e98741f3cf33e::t_fd067f6813c7f6 554-556
+  s_3e98741f3cf33e::t_64a85542a01fe4 43
+server/src/personal/onboard.ts
+  s_3e98741f3cf33e::t_f359bc36975a13 1-155
+deploy/personal/README.md
+  s_3e98741f3cf33e::t_34761d155e6565 46-60
+server/src/personal/bootstrap.ts
+  s_3e98741f3cf33e::t_61b6c3e1d05a8d 1-91
+server/src/db/migrate.ts
+  s_3e98741f3cf33e::t_d1142a33ecaf04 55-58
+  s_3e98741f3cf33e::t_1589cdee5514f8 2642-2647
+server/src/db/migrations/manifest.ts
+  s_3e98741f3cf33e::t_b63803298c7642 70-74,79-80
+src/desktop/Onboarding.tsx
+  s_3e98741f3cf33e::t_76907d35c390d4 10
+  s_3e98741f3cf33e::t_fd70f21a83bc78 20-25
+server/src/personal/bootstrap-token.ts
+  s_3e98741f3cf33e::t_310c752ee98efe 1-25
+server/src/env.ts
+  s_3e98741f3cf33e::t_c600fa373d539f 11
+  s_3e98741f3cf33e::t_2fc59e6fb87e03 526-527
+  s_3e98741f3cf33e::t_f3f0c82c430dc8 128-131
+server/src/db/migrations/0011-personal-onboarding.ts
+  s_3e98741f3cf33e::t_29504509a2cea9 1-21
+src/locales/zh-CN.ts
+  s_3e98741f3cf33e::t_61006f7cbe8cdd 1126-1133
+src/locales/en.ts
+  s_3e98741f3cf33e::t_581982a329afd8 1125-1132
+server/src/__tests__/personal-bootstrap-token.test.ts
+  s_3e98741f3cf33e::t_819e040330e131 1-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "7580afd606da98078c45283c6303a8c807ee9d25",
+  "prompts": {},
+  "sessions": {
+    "s_3e98741f3cf33e": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_td31b0v6fr5f",
+        "model": "kr-claude-opus-5.5"
+      },
+      "human_author": "hcl-z <1401859664@qq.com>"
+    }
+  }
+}
