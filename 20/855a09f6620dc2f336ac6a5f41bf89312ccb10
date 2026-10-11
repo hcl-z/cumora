@@ -1,0 +1,135 @@
+server/src/broker/http-executor.ts
+  s_3e98741f3cf33e::t_51c0065a0ac46b 1-172
+src/types.ts
+  s_3e98741f3cf33e::t_d0cb21f7f67f35 316
+src/desktop/DesktopApp.tsx
+  s_3e98741f3cf33e::t_474173e4948878 27
+  s_3e98741f3cf33e::t_f977459aecdaa9 112
+server/src/personal/connector-schema.ts
+  s_3e98741f3cf33e::t_0e13b028feb241 1-152
+server/src/__integration__/personal-connectors.test.ts
+  s_3e98741f3cf33e::t_b0e9698917599a 1-159
+src/mobile/MobileApp.tsx
+  s_3e98741f3cf33e::t_2812402a8fe8ee 23
+  s_3e98741f3cf33e::t_fc80ecca7dade6 301-309
+docs/personal-bot/mvp-backend-design.md
+  s_3e98741f3cf33e::t_22e9602fb6a197 150-152
+  s_3e98741f3cf33e::t_a0afb7a93bbe5e 392-399
+src/locales/en.ts
+  s_3e98741f3cf33e::t_a0abf70a7fbe5f 1134-1166
+  s_3e98741f3cf33e::t_39ba89a55e2cc5 62
+src/components/console/ui.tsx
+  s_3e98741f3cf33e::t_6e392bd2c366d7 1-118
+server/src/agents/runtime/server.ts
+  s_3e98741f3cf33e::t_f0df221a80863d 48-49
+  s_3e98741f3cf33e::t_86ef8aad9ebc00 497-536
+server/src/personal/connectors.ts
+  s_3e98741f3cf33e::t_06a56502e76ab4 1-272
+server/src/broker/definition.ts
+  s_3e98741f3cf33e::t_355daed6b8cfba 142-143,145,147,154,156-157
+  s_3e98741f3cf33e::t_c0654559f6f67d 1-141,144,146,148-153,155,158-188
+server/src/db/migrate.ts
+  s_3e98741f3cf33e::t_2abde229ea1836 59
+  s_3e98741f3cf33e::t_61e5c355d0c6d3 2649-2654
+server/src/env.ts
+  s_3e98741f3cf33e::t_ed8c10dbc2f208 132-135
+  s_3e98741f3cf33e::t_574c52f61a059a 532-534
+server/src/__tests__/broker.test.ts
+  s_3e98741f3cf33e::t_98cbf39252b2d1 72
+  s_3e98741f3cf33e::t_8efb039a8cdcbd 1-71,73-248
+docs/api-contract.json
+  s_3e98741f3cf33e::t_6aceb917f4009f 39-40
+src/stores/auth.ts
+  s_3e98741f3cf33e::t_0691ec2c3e0720 62
+server/src/idempotent-create.ts
+  s_3e98741f3cf33e::t_5a5698c0613d6d 4,10
+tests/console-shell.test.ts
+  s_3e98741f3cf33e::t_7d62a8eebc6fe1 24
+  s_3e98741f3cf33e::t_607baa43f6b85f 1-23,25-53
+server/src/__integration__/_helpers.ts
+  s_3e98741f3cf33e::t_2d2fbefc445856 34-35
+server/src/__e2e__/connector.e2e.ts
+  s_3e98741f3cf33e::t_fcd6ce4d2ae343 1-107
+server/src/db/migrations/manifest.ts
+  s_3e98741f3cf33e::t_4584619c34c58f 75-79,84-85
+src/api/client.ts
+  s_3e98741f3cf33e::t_63f2d8a3f1135f 818-848
+  s_3e98741f3cf33e::t_83cc58a9f2cd88 896-901
+  s_3e98741f3cf33e::t_68a6914b777429 1650-1657
+server/src/redis.ts
+  s_3e98741f3cf33e::t_21958858037a80 427-433,442
+  s_3e98741f3cf33e::t_52747ddd7e36b9 68-69
+server/src/__e2e__/stack.ts
+  s_3e98741f3cf33e::t_886c33b2b98597 195
+  s_3e98741f3cf33e::t_18dba16a6eb692 164-165
+server/src/ws.ts
+  s_3e98741f3cf33e::t_7156b11ef9fe51 9
+  s_3e98741f3cf33e::t_d63832c815f43f 1347
+src/components/console/ConnectorsTab.tsx
+  s_3e98741f3cf33e::t_5d2654c1aea2a4 1-218
+src/locales/zh-CN.ts
+  s_3e98741f3cf33e::t_b878929c52e19b 68
+  s_3e98741f3cf33e::t_6ba098448db7f0 1135-1167
+src/components/icons.tsx
+  s_3e98741f3cf33e::t_a32cd7c08e2819 89-91
+src/stores/connectors.ts
+  s_3e98741f3cf33e::t_245898630a0c33 1-132
+src/desktop/Rail.tsx
+  s_3e98741f3cf33e::t_ee95c1c84cf10a 9
+  s_3e98741f3cf33e::t_f045894ae2b217 57-63
+src/mobile/MobileMe.tsx
+  s_3e98741f3cf33e::t_116482833d329b 124-141
+  s_3e98741f3cf33e::t_8b5689314062fc 65-66
+deploy/personal/README.md
+  s_3e98741f3cf33e::t_105d0b80195873 61-64
+server/src/agents/computer/loop/session.ts
+  s_3e98741f3cf33e::t_00923659884309 49-50
+  s_3e98741f3cf33e::t_9fef1e025ce105 23,192,212-213,219,250
+server/src/agents/computer/engine.ts
+  s_3e98741f3cf33e::t_2b10f119f36868 5881,5895,5900-5901
+  s_3e98741f3cf33e::t_7251ae513545f9 5846-5848
+  s_3e98741f3cf33e::t_b115e53530f63c 824-826
+  s_3e98741f3cf33e::t_f8ca01563b1138 38
+server/src/broker/broker.ts
+  s_3e98741f3cf33e::t_774ec1954f978d 1-177
+src/components/console/ConsoleWorkspace.tsx
+  s_3e98741f3cf33e::t_0f0148ccfb9d74 1-49
+server/src/__e2e__/cassettes/connector-quote.json
+  s_3e98741f3cf33e::t_bff95ee2466fa1 1-82
+docs/personal-bot/mvp-tasks.md
+  s_3e98741f3cf33e::t_1a1ecbfce5b62b 149-158
+src/desktop/ConsoleView.tsx
+  s_3e98741f3cf33e::t_528bcec8af23fe 1-5
+server/src/db/migrations/0012-connectors.ts
+  s_3e98741f3cf33e::t_c8dbc3a6f31d65 1-59
+server/src/agents/computer/loop/tools.ts
+  s_3e98741f3cf33e::t_a0d792ddb1083c 232-244
+  s_3e98741f3cf33e::t_46abbd3b3f18cb 97-136,140-147,153
+server/src/agents/computer/daemon.ts
+  s_3e98741f3cf33e::t_53573575b34c54 2237-2239
+  s_3e98741f3cf33e::t_ca87aa11100aa7 2387
+  s_3e98741f3cf33e::t_a922851c9251d7 2240-2262,2264-2284
+  s_3e98741f3cf33e::t_79d147cd851888 632-644
+  s_3e98741f3cf33e::t_6e2fefd6e5d80d 2263
+  s_3e98741f3cf33e::t_c1b3c368f0af9e 54-55
+  s_3e98741f3cf33e::t_0cc6160b1f3a53 2036
+server/src/api/router.ts
+  s_3e98741f3cf33e::t_7cc0715d288876 988-1043
+  s_3e98741f3cf33e::t_a26c625a8d77ea 66-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "20855a09f6620dc2f336ac6a5f41bf89312ccb10",
+  "prompts": {},
+  "sessions": {
+    "s_3e98741f3cf33e": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_td31b0v6fr5f",
+        "model": "kr-claude-opus-5.5"
+      },
+      "human_author": "hcl-z <1401859664@qq.com>"
+    }
+  }
+}
