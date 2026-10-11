@@ -66,4 +66,13 @@ npm run typecheck && npm run server:typecheck
 npm run lint
 ```
 
-`npm test` without Redis or a `cumora` database reports five failures in the realtime and post-spawn retry suites. They are environment failures, not regressions.
+`npm test` without Redis or a `cumora` database reports five failures in the realtime and post-spawn retry suites. They are environment failures, not regressions. Without a `.env`, export a dummy `OPENAI_API_KEY` first: `env.ts` exits at import otherwise.
+
+### End-to-end
+
+```bash
+createdb cumora_e2e
+npm run test:e2e
+```
+
+This boots a real server and daemon against a replayed model (`server/src/__e2e__`). It needs Postgres and Redis; without them the test is skipped, and with `E2E_REQUIRED=1` (CI) it fails instead. The database name must end in `_e2e`, because every run drops its public schema. `E2E_VERBOSE=1` streams the server and daemon logs.

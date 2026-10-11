@@ -103,7 +103,9 @@ flowchart LR
 
 依赖：T04。
 
-### T06 引擎回归：chain 和 counting · HITL · S
+### T06 引擎回归：chain 和 counting · HITL · S ⏸
+
+> 暂缓（2026-10-11，用户决定）：本机没有真实的 OpenAI key，先做 T07 和 T08，有 key 之后再补跑。
 
 做什么：让 `benchmarks/` 能指定 `loop` 引擎运行，用真实模型跑 chain 和 counting 两个协作场景，和 COORDINATION.md 里的基线对比。
 
@@ -118,8 +120,14 @@ flowchart LR
 做什么：搭一套 daemon 端到端测试框架，包括录制回放的 fake OpenAI、fake HTTP 连接器、fake MCP 服务器，用脚本一键启动 server 加 daemon。同时在 PR CI 里新增一个 job。后面各个任务的 B 类测试都挂在这套框架上。
 
 验收：
-- [ ] 一条冒烟用例：总群里 @Chief，收到预先录好的回复。
-- [ ] CI job 在 Linux 上通过，总耗时 10 分钟以内。
+- [ ] 一条冒烟用例：总群里 @Chief，收到预先录好的回复（`server/src/__e2e__/smoke.e2e.ts`）。⏸ 本机没有 Redis 时用例会跳过，在 CI 里验证。本地只跑到了这一步：清库、迁移、本地登录、Chief 和总群初始化、daemon 自举配对（Chief 保持 `loop`）都正常。
+- [ ] CI job 在 Linux 上通过，总耗时 10 分钟以内（`pr.yml` 的 `e2e` job，`timeout-minutes: 10`）。
+- 实现说明：
+  - fake OpenAI 支持录制和回放。回放时按请求类型匹配：带工具的是 agent hop，不带工具的是 one-shot 调用。还可以按输入正则匹配，正则里的命名分组用 `{{name}}` 代入回复，这样录好的回复能跟着本次运行的会话 id 走。没有匹配上的 agent 请求直接返回 500 并记录下来，用例会失败，而不是等 bot 沉默直到超时。录制模式会把请求转发给真实 API，并把本次运行特有的值替换成占位符。
+  - fake HTTP 是一个按路由返回固定内容的服务，会记录所有请求，留给 T08 用。
+  - fake MCP 服务器推迟到 T11：MCP 的传输方式要等那时才定，现在写会是猜测。
+  - `pr.yml` 增加了 push 到 `personal-bot` 和 `workflow_dispatch` 两种触发，这样 fork 上不开 PR 也能跑全部检查。
+  - 数据库名必须以 `_e2e` 结尾，因为每次启动都会删掉它的 public schema。
 
 依赖：T05。
 

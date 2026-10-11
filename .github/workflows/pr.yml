@@ -9,6 +9,11 @@ name: PR
 on:
   pull_request:
     branches: [main]
+  # The personal-bot fork has no PRs into main; run the same checks on pushes
+  # to its working branch, or on demand.
+  push:
+    branches: [personal-bot]
+  workflow_dispatch:
 
 # Cancel superseded runs on the same PR — saves CI minutes when you
 # push twice in a row.
@@ -301,3 +306,57 @@ jobs:
           PGPASSWORD=cumora psql -h localhost -U cumora -d cumora_test -c "CREATE EXTENSION IF NOT EXISTS vector"
       - name: Run integration suite
         run: npm run test:integration
+
+  # Daemon end-to-end: real server + real daemon (bootstrap pairing, loop
+  # engine, runtime CLI) against a replayed model (server/src/__e2e__). No
+  # provider credentials; the fake OpenAI answers from recorded cassettes.
+  e2e:
+    name: Daemon e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: cumora
+          POSTGRES_PASSWORD: cumora
+          POSTGRES_DB: cumora_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cumora -d cumora_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      E2E_DATABASE_URL: postgres://cumora:cumora@localhost:5432/cumora_e2e
+      REDIS_URL: redis://localhost:6379
+      # A missing Postgres/Redis must fail here, not skip.
+      E2E_REQUIRED: '1'
+      E2E_LOG_DIR: /tmp/cumora-e2e-logs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: mkdir -p "$E2E_LOG_DIR"
+      - name: Run e2e suite
+        run: npm run test:e2e
+      - name: Upload e2e logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cumora-e2e-logs-${{ github.run_id }}
+          path: /tmp/cumora-e2e-logs/
+          if-no-files-found: ignore

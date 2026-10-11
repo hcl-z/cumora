@@ -39,6 +39,7 @@
     "lint:fix": "biome lint --write .",
     "test": "node --import tsx --test \"server/src/__tests__/**/*.test.ts\" \"tests/**/*.test.ts\" \"workers/**/*.test.ts\"",
     "test:integration": "node server/run-integration-tests.mjs",
+    "test:e2e": "node --import tsx --test --test-concurrency=1 \"server/src/__e2e__/**/*.e2e.ts\"",
     "migrate": "tsx server/src/migrate-bin.ts",
     "icons": "python3 scripts-make-mac-icon.py && npx -y electron-icon-builder -i build/icon.png -o build --flatten && node scripts-sync-electron-dev-icon.mjs",
     "electron:dev": "npm run migrate && concurrently -k -n web,api,electron -c blue,magenta,cyan \"npm:dev\" \"npm:server:dev\" \"wait-on tcp:5180 tcp:5181 && cross-env-shell ELECTRON_RENDERER_URL=http://localhost:5180 electron .\"",

@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "fallbackOneshot": "{\"actionable\":true,\"reason\":\"the owner asked Chief directly\",\"responseMode\":\"me\",\"promptNote\":\"\"}",
+  "interactions": [
+    {
+      "kind": "agent",
+      "note": "Chief answers the ping in 总群 through the Cumora tool",
+      "match": "^(?=[\\s\\S]*E2E-PING)[\\s\\S]*?(?<convo>allhands-[A-Za-z0-9_-]+)",
+      "events": [
+        {
+          "type": "response.output_item.added",
+          "output_index": 0,
+          "item": {
+            "type": "function_call",
+            "id": "fc_smoke_0",
+            "call_id": "call_smoke_0",
+            "name": "mcp__cumora__cli",
+            "arguments": "{\"argv\":[\"reply\",\"{{convo}}\",\"E2E-PONG 收到，Chief 在线。\"]}"
+          }
+        },
+        {
+          "type": "response.completed",
+          "response": { "status": "completed", "output": [], "usage": { "input_tokens": 100, "output_tokens": 10, "input_tokens_details": { "cached_tokens": 0 } } }
+        }
+      ]
+    },
+    {
+      "kind": "agent",
+      "note": "then declares the turn done",
+      "match": "E2E-PONG",
+      "events": [
+        {
+          "type": "response.output_item.added",
+          "output_index": 0,
+          "item": {
+            "type": "function_call",
+            "id": "fc_smoke_1",
+            "call_id": "call_smoke_1",
+            "name": "set_turn_status",
+            "arguments": "{\"status\":\"done\",\"reason\":\"answered the ping\",\"next_step\":\"\"}"
+          }
+        },
+        {
+          "type": "response.completed",
+          "response": { "status": "completed", "output": [], "usage": { "input_tokens": 120, "output_tokens": 5, "input_tokens_details": { "cached_tokens": 0 } } }
+        }
+      ]
+    }
+  ]
+}
