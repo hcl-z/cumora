@@ -1,0 +1,112 @@
+server/src/__e2e__/stack.ts
+  s_3e98741f3cf33e::t_dab0f32338a1fe 143-145
+  s_3e98741f3cf33e::t_6928c0d4a10d29 127-128
+  s_3e98741f3cf33e::t_88406e82e0bfcd 220
+server/src/__integration__/personal-connectors.test.ts
+  s_3e98741f3cf33e::t_37592c76dd0555 139-170
+server/src/broker/broker.ts
+  s_3e98741f3cf33e::t_c13601a23d3385 32-36
+  s_3e98741f3cf33e::t_f55d46d1056496 141-152,156,158,160,169-170,178,186,192,195-202
+src/locales/en.ts
+  s_3e98741f3cf33e::t_ac2228966a476b 1154-1167
+server/src/personal/connector-schema.ts
+  s_3e98741f3cf33e::t_70f45a616293c5 13-14
+  s_3e98741f3cf33e::t_9aa20359a313d5 150
+  s_3e98741f3cf33e::t_b485c12b7bfe90 12
+  s_3e98741f3cf33e::t_ca66d6d30540f6 94-120
+server/src/__e2e__/cassettes/connector-keyed.json
+  s_3e98741f3cf33e::t_1bcdc8faeb1ee5 1-63
+src/locales/zh-CN.ts
+  s_3e98741f3cf33e::t_39ed8c499804d1 1155-1168
+server/src/agents/computer/control-event.ts
+  s_3e98741f3cf33e::t_702e1af9c4ee2a 2-11,15-24
+server/src/agents/computer/control-bus.ts
+  s_3e98741f3cf33e::t_dd1e624c1b8f19 80-134
+server/src/personal/connectors.ts
+  s_3e98741f3cf33e::t_4ca8dd8a093d08 164
+  s_3e98741f3cf33e::t_490e999df89ed8 48-54,57-59
+  s_3e98741f3cf33e::t_6c8226f572cf33 138-163,165-218
+server/src/broker/http-executor.ts
+  s_3e98741f3cf33e::t_d41781e7f8b0ee 107
+  s_3e98741f3cf33e::t_f627287971e7aa 45-46
+  s_3e98741f3cf33e::t_907c33c3c3f3f6 130
+src/api/client.ts
+  s_3e98741f3cf33e::t_b2bb14762af89b 906-909
+  s_3e98741f3cf33e::t_83c4b58cdd2f20 847-849
+  s_3e98741f3cf33e::t_2ce76498b0c4da 905
+server/src/__tests__/vault.test.ts
+  s_3e98741f3cf33e::t_106744e4995ab5 1-93,102-111
+  s_3e98741f3cf33e::t_0422525319e572 94-101
+src/components/console/ConnectorsTab.tsx
+  s_3e98741f3cf33e::t_650b0dfde4f5a9 296-297
+  s_3e98741f3cf33e::t_6642019b99851f 9-11
+  s_3e98741f3cf33e::t_cc560adbebf975 164-244
+server/src/__integration__/_helpers.ts
+  s_3e98741f3cf33e::t_333d96f8e9f91f 34
+server/src/broker/vault.ts
+  s_3e98741f3cf33e::t_9f9e457fd2291a 1-21,23-25,27,29-303,311-314,317
+  s_3e98741f3cf33e::t_94f16c8c39b5f0 26,28
+  s_3e98741f3cf33e::t_46d1fb84ea6ee1 304-310,315-316
+server/src/db/migrations/0013-connector-credentials.ts
+  s_3e98741f3cf33e::t_02fb8737c99f1c 1-28
+server/src/db/migrations/manifest.ts
+  s_3e98741f3cf33e::t_ce984e486e03d5 80-84,89-90
+server/src/api/router.ts
+  s_3e98741f3cf33e::t_4bfa0787855da0 66,1081
+  s_3e98741f3cf33e::t_793d7def504aa9 59
+  s_3e98741f3cf33e::t_d64b6aa6c8016e 69-70
+  s_3e98741f3cf33e::t_916f55f00c7a73 1046-1080,1082-1105
+  s_3e98741f3cf33e::t_8c00e305fe04dd 1605-1649
+server/src/agents/computer/daemon.ts
+  s_3e98741f3cf33e::t_8e14bb4dae5258 3925-3927,3936-3939
+  s_3e98741f3cf33e::t_6485838ed19fc9 4910
+  s_3e98741f3cf33e::t_4516f80907d6b5 44-45
+  s_3e98741f3cf33e::t_dd40f301ac1504 2395-2396
+  s_3e98741f3cf33e::t_f22cf655cf7dbd 719
+  s_3e98741f3cf33e::t_62ae8807423243 646-718,720-757
+docs/personal-bot/mvp-tasks.md
+  s_3e98741f3cf33e::t_b28ad31a6fc09c 168,170-172,174-190
+server/src/__e2e__/credential.e2e.ts
+  s_3e98741f3cf33e::t_3cff431142eb63 1-12,14-124,131-139
+  s_3e98741f3cf33e::t_987f03caf8b7d8 13
+  s_3e98741f3cf33e::t_d7319c15191d64 125-130
+docs/personal-bot/mvp-backend-design.md
+  s_3e98741f3cf33e::t_2f7c5c7fe89383 528-537
+server/src/__tests__/broker.test.ts
+  s_3e98741f3cf33e::t_0db26ff1065967 257-311
+  s_3e98741f3cf33e::t_171a9fc6e5d0a5 17
+  s_3e98741f3cf33e::t_77fe36a446ecc3 75-78
+  s_3e98741f3cf33e::t_f7731a6a071141 86-99
+src/lib/vault-seal.ts
+  s_3e98741f3cf33e::t_6d28bd73adc3f4 15
+  s_3e98741f3cf33e::t_16f86e126da931 1-12,18-31,33-47
+  s_3e98741f3cf33e::t_8b80df602684f0 32
+  s_3e98741f3cf33e::t_590db127eaccd9 13-14,16-17
+server/src/broker/definition.ts
+  s_3e98741f3cf33e::t_643ce1ee5e6ec7 28-34,42,46,48-60
+  s_3e98741f3cf33e::t_af60aa553809a7 47
+  s_3e98741f3cf33e::t_baa5b345fa7ccd 135-142
+  s_3e98741f3cf33e::t_9021622b9b1792 116,120-122
+server/src/db/migrate.ts
+  s_3e98741f3cf33e::t_529da01e8c9ba0 60
+  s_3e98741f3cf33e::t_a2cfe6e4205cc6 2656-2661
+server/src/__e2e__/fake-http.ts
+  s_3e98741f3cf33e::t_8d51837b04f35b 18-19
+  s_3e98741f3cf33e::t_03e8432b072af9 58-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "6c22b5abe24343a371c4fcbf755cc6eb02ebb301",
+  "prompts": {},
+  "sessions": {
+    "s_3e98741f3cf33e": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_td31b0v6fr5f",
+        "model": "kr-claude-opus-5.5"
+      },
+      "human_author": "hcl-z <1401859664@qq.com>"
+    }
+  }
+}
