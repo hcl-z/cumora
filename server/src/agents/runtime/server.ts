@@ -45,6 +45,8 @@ import { attachFsEndpoints } from './fs-endpoints.js'
 import { inprocClient } from './inproc-client.js'
 import { type AgentRuntimeClaims, verifyAgentToken } from './jwt.js'
 import { attachWakeStream, } from './wake-bus.js'
+import { env } from '../../env.js'
+import { authorizeConnectorCall, brokerScope } from '../../personal/connectors.js'
 
 export type { WakeEvent } from './wake-bus.js'
 
@@ -490,6 +492,46 @@ runtimeRouter.post('/events', withAgent(async (c, req, res) => {
   })
   if (!gate.authorized || !gate.result) { res.status(404).json({ error: 'agent run not found' }); return }
   res.json({ ok: true })
+}))
+
+// ─── broker: connector scope and per-call authorization (personal mode) ─
+//
+// The daemon's Broker reads its scope here and must pass /broker/authorize
+// before every connector call. Identity comes only from the JWT. A denial is
+// audited server-side, so it is recorded even if the daemon never reports it.
+
+runtimeRouter.get('/broker/scope', withAgent(async (c, _req, res) => {
+  if (!env.PERSONAL_MODE) { res.status(404).json({ error: 'connectors are a personal-mode feature' }); return }
+  res.json({ connectors: await brokerScope(c.companyId) })
+}))
+
+runtimeRouter.post('/broker/authorize', withAgent(async (c, req, res) => {
+  if (!env.PERSONAL_MODE) { res.status(404).json({ error: 'connectors are a personal-mode feature' }); return }
+  const body = req.body as { action?: unknown; argsHash?: unknown; runId?: unknown } | undefined
+  if (typeof body?.action !== 'string' || !body.action || body.action.length > 200
+    || (body.argsHash !== undefined && typeof body.argsHash !== 'string')
+    || (body.runId !== undefined && body.runId !== null && typeof body.runId !== 'string')) {
+    res.status(400).json({ error: 'action (string) required; argsHash and runId must be strings' }); return
+  }
+  const verdict = await authorizeConnectorCall({ companyId: c.companyId, action: body.action })
+  if (verdict.decision === 'deny' && typeof body.runId === 'string' && body.runId) {
+    await withRuntimeAgentRunAuthorization({
+      agentId: c.sub,
+      companyId: c.companyId,
+      runIds: [body.runId],
+      task: (client) => recordAgentEventForOwner({
+        runId: body.runId as string,
+        agentId: c.sub,
+        companyId: c.companyId,
+        kind: 'connector.denied',
+        level: 'warn',
+        title: `denied ${body.action as string}`,
+        data: { action: body.action, reason: verdict.reason, argsHash: body.argsHash ?? null },
+        stage: 'connector',
+      }, client),
+    }).catch((err) => console.error('[runtime] connector.denied audit failed', err instanceof Error ? err.message : err))
+  }
+  res.json(verdict)
 }))
 
 // Record one LOCAL (BYOA) triage in the cost ledger. The daemon runs triage on

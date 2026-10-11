@@ -815,6 +815,37 @@ export interface ShippingOverview {
   dueReadbacks: Array<{ id: string; featureId: string; featureTitle: string; readbackDueAt: string; readbackStatus: 'pending' | 'overdue' }>
 }
 
+/** Personal-mode connectors (docs/personal-bot/mvp-frontend-design.md §5). */
+export type ApiConnectorStatus = 'draft' | 'active' | 'disabled'
+
+export interface ApiConnectorAction {
+  id: string
+  effect: 'read' | 'write'
+  effectConfirmed: boolean
+  method: string | null
+  paramsSchema: Record<string, unknown>
+  description: string | null
+}
+
+export interface ApiConnector {
+  id: string
+  slug: string
+  kind: 'http' | 'mcp' | 'builtin'
+  status: ApiConnectorStatus
+  name: string | null
+  description: string | null
+  baseUrl: string | null
+  adhocRead: boolean
+  createdByKind: 'user' | 'bot'
+  createdAt: string
+  updatedAt: string
+  actions: ApiConnectorAction[]
+}
+
+export interface ApiConnectorDetail extends ApiConnector {
+  definitionYaml: string
+}
+
 export const api = {
   health: () => http<{ ok: boolean; ts: number }>('/health'),
   me: () => http<{ id: string; name: string; kind: string }>('/me'),
@@ -862,6 +893,12 @@ export const api = {
   listCompanies: () =>
     http<Array<{ id: string; name: string; slug: string; createdAt: string; role: string }>>('/companies'),
   listProjects: () => http<ApiProject[]>('/projects'),
+  listConnectors: () => http<{ connectors: ApiConnector[] }>('/personal/connectors'),
+  getConnector: (id: string) => http<{ connector: ApiConnectorDetail }>(`/personal/connectors/${encodeURIComponent(id)}`),
+  createConnector: (input: { yaml: string; adhocRead: boolean; requestId?: string }) =>
+    http<{ connector: ApiConnectorDetail; replayed: boolean }>('/personal/connectors', { method: 'POST', body: JSON.stringify(input) }),
+  updateConnector: (id: string, input: { status?: ApiConnectorStatus; adhocRead?: boolean }) =>
+    http<{ connector: ApiConnectorDetail }>(`/personal/connectors/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
   getShippingOverview: () => http<ShippingOverview>('/shipping/overview'),
   getShippingFeature: (id: string) => http<ShippingFeatureDetail>(`/shipping/features/${encodeURIComponent(id)}`),
   createShippingFeature: (input: {
@@ -1609,6 +1646,14 @@ export type WsEvent =
       actorId: string
       userId?: string
       role?: 'admin' | 'member'
+    }
+  | {
+      /** Personal mode: a connector was created or changed. Thin payload —
+       *  clients refetch the one connector. */
+      type: 'connector.changed'
+      kind: 'connector.created' | 'connector.updated'
+      connectorId: string
+      companyId?: string
     }
 
 type Listener = (e: WsEvent) => void

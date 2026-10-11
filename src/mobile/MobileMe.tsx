@@ -62,6 +62,8 @@ export function MobileMe() {
   const activeCompany = companies.find((c) => c.id === activeCompanyId)
 
   const openAgentInfo = useApp((s) => s.openAgentInfo)
+  const setView = useApp((s) => s.setView)
+  const personalMode = useAuth((s) => s.serverCapabilities?.personalMode === true)
   // Warm one-line "you steward N agents across M rooms" copy. Beats a
   // 4-card dashboard grid as a homepage statement — the numbers are
   // there but they read as personal context, not KPIs.
@@ -115,6 +117,24 @@ export function MobileMe() {
           <Section title={t('mobileMe.workspace')}>
             <div className="bg-cloud rounded-[12px] p-2" style={{ border: '1px solid var(--ink-100)' }}>
               <CompanySwitcher />
+            </div>
+          </Section>
+        )}
+
+        {personalMode && (
+          <Section title={t('nav.console')}>
+            <div className="bg-cloud rounded-[12px] divide-y divide-ink-100" style={{ border: '1px solid var(--ink-100)' }}>
+              <button
+                type="button"
+                onClick={() => setView('console')}
+                className="w-full text-left flex items-center gap-3 p-3.5 active:bg-paper transition"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-[13px] text-ink-900 leading-tight">{t('console.tab.connectors')}</div>
+                  <div className="font-display italic text-[11px] text-ink-500 mt-0.5">{t('mobileMe.connectorsSub')}</div>
+                </div>
+                <span aria-hidden className="text-ink-300">›</span>
+              </button>
             </div>
           </Section>
         )}

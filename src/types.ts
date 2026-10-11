@@ -313,7 +313,7 @@ export interface Message {
 }
 
 export interface ViewKey {
-  view: 'conversations' | 'whispers' | 'convene' | 'agents' | 'boards' | 'calendar' | 'documents' | 'shipping' | 'observability' | 'me' | 'library'
+  view: 'conversations' | 'whispers' | 'convene' | 'agents' | 'boards' | 'calendar' | 'documents' | 'shipping' | 'observability' | 'me' | 'library' | 'console'
 }
 
 /* ============== Calendar (AI-native shared schedule) ============== */

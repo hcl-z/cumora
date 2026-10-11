@@ -20,6 +20,7 @@ import { useSwipeBackProps } from './useSwipeBack'
 import { ViewBoundary } from './ViewBoundary'
 
 const ShippingWorkspace = lazy(() => import('@/components/ShippingWorkspace').then((module) => ({ default: module.ShippingWorkspace })))
+const ConsoleWorkspace = lazy(() => import('@/components/console/ConsoleWorkspace').then((module) => ({ default: module.ConsoleWorkspace })))
 
 /** iOS UINavigationController push/pop spring. CRITICALLY DAMPED:
  *  damping ratio ζ = damping / (2·√(k·m)) = 38 / (2·√320) ≈ 1.06,
@@ -294,6 +295,15 @@ export function MobileApp() {
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               transition={fadeTransition}>
               <ViewBoundary name="Ship"><Suspense fallback={<div className="h-full grid place-items-center text-sm text-ink-400">{t('mapp.openingShip')}</div>}><ShippingWorkspace compact /></Suspense></ViewBoundary>
+            </motion.div>
+          )}
+
+          {/* CONSOLE — personal-mode 工作台, reached from the 我 page */}
+          {view === 'console' && (
+            <motion.div key="console" className="absolute inset-0"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={fadeTransition}>
+              <ViewBoundary name="Console"><Suspense fallback={<div className="h-full grid place-items-center text-sm text-ink-400">{t('console.opening')}</div>}><ConsoleWorkspace compact /></Suspense></ViewBoundary>
             </motion.div>
           )}
 

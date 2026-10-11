@@ -6,7 +6,7 @@ import { useComputers } from '@/stores/computers'
 import { useDevtools } from '@/stores/devtools'
 import { useParticipants } from '@/stores/participants'
 import { Avatar } from '@/components/Avatar'
-import { IChat, IWhisper, IAgent, IAgents, IBoard, IDoc, ICalendar, IObserve, IExit, IShip } from '@/components/icons'
+import { IChat, IWhisper, IAgent, IAgents, IBoard, IDoc, ICalendar, IConsole, IObserve, IExit, IShip } from '@/components/icons'
 import { api } from '@/api/client'
 import { cn } from '@/lib/utils'
 import { useT, type MessageKey } from '@/lib/i18n'
@@ -54,7 +54,13 @@ export function Rail() {
         ...baseItems.slice(3),
       ]
     : baseItems
-  const items = isOwner ? assembled : assembled.filter((i) => i.key !== 'whispers')
+  // The console (工作台) is personal-mode only: connectors, capabilities and
+  // approvals do not exist on a multi-tenant server.
+  const personalMode = useAuth((s) => s.serverCapabilities?.personalMode === true)
+  const withConsole = personalMode
+    ? [...assembled.slice(0, 1), { key: 'console' as const, Icon: IConsole, label: 'nav.console' as MessageKey }, ...assembled.slice(1)]
+    : assembled
+  const items = isOwner ? withConsole : withConsole.filter((i) => i.key !== 'whispers')
   // The Rail's top avatar is the SIGNED-IN user, not a mock. Resolve the
   // current user's participant record so the Gravatar (set during signup
   // / backfilled at boot) shows up properly. Fall back to a minimal

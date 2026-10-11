@@ -146,10 +146,16 @@ flowchart LR
 - 前端：工作台外壳（只有连接器 tab，列表加只读详情）、Rail 入口、移动端"我"页面的入口，以及 `components/console/ui.tsx` 里的基础组件。
 
 验收：
-- [ ] 产品计划 A4 的最小版本：在总群里提问，Chief 调用读动作后作答，审计里能看到这次调用。
-- [ ] B2：调用不在授权范围内的动作，会被拒绝并写进审计。
-- [ ] 请求私网地址、http 明文地址、响应超过 2MB，都会被拒绝，有对应测试。
-- [ ] 新增的 WS 事件 `connector.changed` 同步改了 4 处，`api-contract` 测试通过。
+- [ ] 产品计划 A4 的最小版本：在总群里提问，Chief 调用读动作后作答，审计里能看到这次调用（`server/src/__e2e__/connector.e2e.ts`：Chief 读到 fixture 服务的报价，结果编号为 `ev_1`，回复里引用了 `[ev_1]`，`agent_events` 里有对应的 `connector.call`）。⏸ 本机没有 Redis，这条在 CI 里验证。
+- [ ] B2：调用不在授权范围内的动作，会被拒绝并写进审计。同一个 e2e 用例里，Chief 先尝试调用写动作，被拒绝后由服务端写入 `connector.denied`；fixture 服务没有收到这次请求。集成测试 `personal-connectors.test.ts` 覆盖了 authorize 的全部拒绝分支（草稿、写动作、未知动作、未知连接器、名字不合法、跨工作区、没开临时任务可读），本地在 Postgres 上通过。⏸ e2e 部分在 CI 里验证。
+- [x] 请求私网地址、http 明文地址、响应超过 2MB，都会被拒绝，有对应测试（`broker.test.ts`）：私网 IP 字面量和本地主机名在建立连接前就会拒绝；公网域名解析到私网地址的情况，在 socket 自己的 lookup 里拦截，所以检查的地址就是实际连接的地址（防 DNS rebinding）；超过 2MB 的响应会被中途切断；超时和限流也都有测试。重定向不跟随。
+- [x] 新增的 WS 事件 `connector.changed` 同步改了 4 处：`ws.ts` 的订阅列表、`client.ts` 的 `WsEvent`、`api-contract.json`、事件带 `companyId`。`api-contract` 测试通过。
+- 实现说明：
+  - 定义和地址规则放在 `server/src/broker/definition.ts`，不依赖任何第三方包，daemon 和 server 共用。YAML 解析（js-yaml）只在 server 侧做，daemon 拿到的是解析好的 JSON，所以 agent-cli 包里没有 js-yaml，现在是 450KB。
+  - 服务端是策略的唯一来源：daemon 每次调用前都要 authorize，执行时用的是服务端这次返回的定义，不用缓存。拒绝在服务端写审计，即使 daemon 没上报也有记录。
+  - 只有进程内引擎（loop）会拿到 Broker。daemon 第一次开会话前探测一次 `/runtime/broker/scope`，非个人模式的 server 返回 404，这时不会提供连接器工具。
+  - 这次没做、留到后续任务的：凭证（T09）、逐个动作确认读写标注和修改动作（T10）、引导式接入向导（T10）。连接器调用目前不受 interrupt 插话中止，只受 30 秒超时约束。
+  - e2e 里的 fixture 服务跑在 `http://127.0.0.1`，所以加了两个仅供测试的开关：server 的 `PERSONAL_CONNECTOR_ALLOW_LOOPBACK_HTTP` 和 daemon 的 `CUMORA_BROKER_ALLOW_LOOPBACK_HTTP`。它们只放行 http 访问回环地址，其他私网地址仍然拦截；server 在生产环境下设置这个开关会拒绝启动。
 
 依赖：T05。
 

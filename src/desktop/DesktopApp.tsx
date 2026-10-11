@@ -24,6 +24,7 @@ import { EmailComposer } from '@/components/EmailComposer'
 import { useT } from '@/lib/i18n'
 
 const ShippingView = lazy(() => import('./ShippingView').then((module) => ({ default: module.ShippingView })))
+const ConsoleView = lazy(() => import('./ConsoleView').then((module) => ({ default: module.ConsoleView })))
 
 function ConversationsLayout() {
   const infoOpen = useApp((s) => s.infoAgentId !== null)
@@ -108,6 +109,7 @@ export function DesktopApp() {
         {view === 'calendar' && <CalendarView />}
         {view === 'documents' && <DocumentsView />}
         {view === 'shipping' && <Suspense fallback={<div className="h-full grid place-items-center text-sm text-ink-400">{t('desktop.openingShip')}</div>}><ShippingView /></Suspense>}
+        {view === 'console' && <Suspense fallback={<div className="h-full grid place-items-center text-sm text-ink-400">{t('console.opening')}</div>}><ConsoleView /></Suspense>}
         {view === 'observability' && devtoolsEnabled && <ObservabilityView />}
         {view === 'me' && <MeView />}
       </div>

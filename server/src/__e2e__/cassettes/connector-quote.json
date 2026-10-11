@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "fallbackOneshot": "{\"actionable\":true,\"complete\":true,\"reason\":\"the owner asked Chief directly\",\"responseMode\":\"me\",\"promptNote\":\"\",\"next_step\":\"\"}",
+  "interactions": [
+    {
+      "kind": "agent",
+      "note": "Chief first tries a write action that ad-hoc tasks may not use",
+      "match": "E2E-QUOTE",
+      "events": [
+        {
+          "type": "response.output_item.added",
+          "output_index": 0,
+          "item": {
+            "type": "function_call",
+            "id": "fc_quote_0",
+            "call_id": "call_quote_0",
+            "name": "connector_call",
+            "arguments": "{\"action\":\"market-data.place_order\",\"args\":{\"symbol\":\"ACME\",\"qty\":1}}"
+          }
+        },
+        { "type": "response.completed", "response": { "status": "completed", "output": [], "usage": { "input_tokens": 100, "output_tokens": 10, "input_tokens_details": { "cached_tokens": 0 } } } }
+      ]
+    },
+    {
+      "kind": "agent",
+      "note": "denied, so it reads the quote instead",
+      "match": "DENIED: write actions need an approval",
+      "events": [
+        {
+          "type": "response.output_item.added",
+          "output_index": 0,
+          "item": {
+            "type": "function_call",
+            "id": "fc_quote_1",
+            "call_id": "call_quote_1",
+            "name": "connector_call",
+            "arguments": "{\"action\":\"market-data.quote\",\"args\":{\"symbol\":\"ACME\"}}"
+          }
+        },
+        { "type": "response.completed", "response": { "status": "completed", "output": [], "usage": { "input_tokens": 120, "output_tokens": 10, "input_tokens_details": { "cached_tokens": 0 } } } }
+      ]
+    },
+    {
+      "kind": "agent",
+      "note": "answers in 总群, citing the evidence id",
+      "match": "^(?=[\\s\\S]*\"evidence_id\":\"ev_1\")[\\s\\S]*?(?<convo>allhands-[A-Za-z0-9_-]+)",
+      "events": [
+        {
+          "type": "response.output_item.added",
+          "output_index": 0,
+          "item": {
+            "type": "function_call",
+            "id": "fc_quote_2",
+            "call_id": "call_quote_2",
+            "name": "mcp__cumora__cli",
+            "arguments": "{\"argv\":[\"reply\",\"{{convo}}\",\"E2E-QUOTE-ANSWER ACME 现价 42.5 [ev_1]\"]}"
+          }
+        },
+        { "type": "response.completed", "response": { "status": "completed", "output": [], "usage": { "input_tokens": 140, "output_tokens": 10, "input_tokens_details": { "cached_tokens": 0 } } } }
+      ]
+    },
+    {
+      "kind": "agent",
+      "note": "then declares the turn done",
+      "match": "E2E-QUOTE-ANSWER",
+      "events": [
+        {
+          "type": "response.output_item.added",
+          "output_index": 0,
+          "item": {
+            "type": "function_call",
+            "id": "fc_quote_3",
+            "call_id": "call_quote_3",
+            "name": "set_turn_status",
+            "arguments": "{\"status\":\"done\",\"reason\":\"answered with the quote\",\"next_step\":\"\"}"
+          }
+        },
+        { "type": "response.completed", "response": { "status": "completed", "output": [], "usage": { "input_tokens": 160, "output_tokens": 5, "input_tokens_details": { "cached_tokens": 0 } } } }
+      ]
+    }
+  ]
+}

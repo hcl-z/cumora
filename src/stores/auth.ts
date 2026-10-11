@@ -59,6 +59,7 @@ function resetWorkspaceStores(): void {
     import('./boards').then(({ useBoards }) => useBoards.getState().reset()),
     import('./calendar').then(({ useCalendar }) => useCalendar.getState().reset()),
     import('./shipping').then(({ useShipping }) => useShipping.getState().reset()),
+    import('./connectors').then(({ useConnectors }) => useConnectors.getState().reset()),
     import('./app').then(({ useApp }) => useApp.getState().selectConversation(null)),
   ])
 }

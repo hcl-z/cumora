@@ -36,7 +36,8 @@
       "calendar.reminder",
       "calendar.changed",
       "poll.updated",
-      "workspace.membership"
+      "workspace.membership",
+      "connector.changed"
     ],
     "clientDeclaresCompanyId": ["participants.added", "workspace.membership"]
   }

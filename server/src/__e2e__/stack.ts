@@ -161,6 +161,8 @@ export async function startStack(opts: { cassette: Cassette }): Promise<Stack> {
     EMAIL_DOMAIN: 'cumora.local',
     EMAIL_INBOUND_HMAC_SECRET: 'e2e-secret',
     RESEND_API_KEY: '',
+    // Connectors may point at a FakeHttp fixture on 127.0.0.1 (tests only).
+    PERSONAL_CONNECTOR_ALLOW_LOOPBACK_HTTP: '1',
   }
 
   await resetDatabase(E2E_DATABASE_URL)
@@ -190,6 +192,7 @@ export async function startStack(opts: { cassette: Cassette }): Promise<Stack> {
       ...common,
       HOME: home,
       CUMORA_PERSONAL_BOOTSTRAP_TOKEN: bootstrapToken,
+      CUMORA_BROKER_ALLOW_LOOPBACK_HTTP: '1',
     })
 
     const api = async <T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> => {

@@ -129,6 +129,10 @@ export const env = {
    *  first computer (personal/bootstrap.ts). Unset disables bootstrap pairing;
    *  set but shorter than 32 characters refuses to boot. */
   PERSONAL_BOOTSTRAP_TOKEN: (process.env.PERSONAL_BOOTSTRAP_TOKEN ?? '').trim(),
+  /** Accept connector base URLs of http://127.0.0.1 or http://[::1] so local
+   *  e2e tests can point a connector at a fixture server. The daemon has its
+   *  own matching switch; both refuse it in production. */
+  PERSONAL_CONNECTOR_ALLOW_LOOPBACK_HTTP: /^(true|1|yes|on)$/i.test(process.env.PERSONAL_CONNECTOR_ALLOW_LOOPBACK_HTTP ?? ''),
   /**
    * Minimum interval (ms) between alerts that share the same
    * (label, error-fingerprint). Defaults to 60s — protects the webhook
@@ -525,6 +529,9 @@ export const env = {
   })
   const bootstrapError = bootstrapTokenError(env.PERSONAL_BOOTSTRAP_TOKEN)
   if (bootstrapError) errors.push(bootstrapError)
+  if (env.PERSONAL_CONNECTOR_ALLOW_LOOPBACK_HTTP && env.NODE_ENV === 'production') {
+    errors.push('PERSONAL_CONNECTOR_ALLOW_LOOPBACK_HTTP is a test switch and cannot be set in production')
+  }
   if (errors.length > 0) {
     for (const e of errors) console.error(`[env] ${e} — refusing to start.`)
     process.exit(1)

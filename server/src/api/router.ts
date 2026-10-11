@@ -63,6 +63,10 @@ import {
   findIdempotentCreate, IdempotencyConflictError,
   parseRequestId, requestHash,
 } from '../idempotent-create.js'
+import { ConnectorSchemaError } from '../personal/connector-schema.js'
+import {
+  ConnectorConflictError, createConnector, getConnector, listConnectors, updateConnector,
+} from '../personal/connectors.js'
 
 /** Re-export so older imports (server/index.ts, agents/cli.ts) keep working
  *  after the storage abstraction moved this constant. */
@@ -980,6 +984,62 @@ if (env.PERSONAL_MODE && env.PERSONAL_BOOTSTRAP_TOKEN) {
     res.json({ computerId: r.computerId, companyId: r.companyId, deviceToken: r.deviceToken })
   }))
 }
+
+// ─── personal console: connectors (docs/personal-bot/mvp-backend-design.md §12.1) ─
+
+function requirePersonalMode(): void {
+  if (!env.PERSONAL_MODE) throw new HttpError(404, 'connectors are a personal-mode feature')
+}
+
+api.get('/personal/connectors', safe(async (req, res) => {
+  requirePersonalMode()
+  const { companyId } = await requireCompany(req)
+  res.json({ connectors: await listConnectors(companyId) })
+}))
+
+api.post('/personal/connectors', safe(async (req, res) => {
+  requirePersonalMode()
+  const { userId, companyId } = await requireCompany(req)
+  const yamlSource = typeof req.body?.yaml === 'string' ? req.body.yaml : ''
+  if (!yamlSource.trim()) throw new HttpError(400, 'yaml is required')
+  if (req.body?.adhocRead !== undefined && typeof req.body.adhocRead !== 'boolean') throw new HttpError(400, 'adhocRead must be a boolean')
+  try {
+    const { connector, replayed } = await createConnector({
+      companyId, actorId: userId, actorKind: 'user', yaml: yamlSource,
+      adhocRead: req.body?.adhocRead === true,
+      requestId: createRequestId(req.body?.requestId),
+      parse: { allowLoopbackHttp: env.PERSONAL_CONNECTOR_ALLOW_LOOPBACK_HTTP },
+    })
+    res.status(replayed ? 200 : 201).json({ connector, replayed })
+  } catch (err) {
+    if (err instanceof ConnectorSchemaError) { res.status(400).json({ error: err.message, problems: err.problems }); return }
+    if (err instanceof ConnectorConflictError || err instanceof IdempotencyConflictError) throw new HttpError(409, err.message)
+    throw err
+  }
+}))
+
+api.get('/personal/connectors/:id', safe(async (req, res) => {
+  requirePersonalMode()
+  const { companyId } = await requireCompany(req)
+  const connector = await getConnector(companyId, String(req.params.id))
+  if (!connector) throw new HttpError(404, 'connector not found')
+  res.json({ connector })
+}))
+
+api.patch('/personal/connectors/:id', safe(async (req, res) => {
+  requirePersonalMode()
+  const { companyId } = await requireCompany(req)
+  const status = req.body?.status
+  const adhocRead = req.body?.adhocRead
+  if (status !== undefined && status !== 'draft' && status !== 'active' && status !== 'disabled') {
+    throw new HttpError(400, 'status must be draft, active or disabled')
+  }
+  if (adhocRead !== undefined && typeof adhocRead !== 'boolean') throw new HttpError(400, 'adhocRead must be a boolean')
+  if (status === undefined && adhocRead === undefined) throw new HttpError(400, 'nothing to change')
+  const connector = await updateConnector({ companyId, id: String(req.params.id), status, adhocRead })
+  if (!connector) throw new HttpError(404, 'connector not found')
+  res.json({ connector })
+}))
 
 api.post('/auth/logout', safe(async (req, res) => {
   const auth = req.headers.authorization

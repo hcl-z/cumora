@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto'
 import type { PoolClient } from 'pg'
 
-export type IdempotentCreateDomain = 'board' | 'document' | 'calendar-event'
+export type IdempotentCreateDomain = 'board' | 'document' | 'calendar-event' | 'connector'
 
 const TABLE_BY_DOMAIN: Record<IdempotentCreateDomain, string> = {
   board: 'boards',
   document: 'documents',
   'calendar-event': 'calendar_events',
+  connector: 'connectors',
 }
 
 export class IdempotencyConflictError extends Error {

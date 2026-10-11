@@ -65,6 +65,8 @@ export const CH_CALENDAR_EVENTS = 'cumora:calendar.events'
  * removal/deletion events must still reach users whose company_members row has
  * already gone, so the WS bridge routes this channel by recipientUserIds. */
 export const CH_WORKSPACES = 'cumora:workspaces'
+/** Personal-mode connector create / update (docs/personal-bot). Workspace-wide. */
+export const CH_CONNECTORS = 'cumora:connectors'
 
 /* === Event types ===
  *
@@ -422,6 +424,13 @@ export interface PollUpdatedEvent extends TenantTagged {
   actorId: string | null
 }
 
+/** Personal-mode connector create / update. Clients refetch the one row. */
+export interface ConnectorChangedEvent extends TenantTagged {
+  type: 'connector.changed'
+  kind: 'connector.created' | 'connector.updated'
+  connectorId: string
+}
+
 export type BroadcastEvent = MessageNewEvent | MessageDeltaEvent | TypingEvent
   | StatusEvent | AvatarEvent | ParticipantAddedEvent | ReactionsEvent
   | GroupPulledEvent | ConversationUpdatedEvent | ConveneEvent
@@ -430,6 +439,7 @@ export type BroadcastEvent = MessageNewEvent | MessageDeltaEvent | TypingEvent
   | PollUpdatedEvent
   | ComputerStatusEvent
   | WorkspaceMembershipEvent
+  | ConnectorChangedEvent
 
 export async function publish(channel: string, event: BroadcastEvent): Promise<void> {
   await redis.publish(channel, JSON.stringify(event))

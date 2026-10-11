@@ -51,7 +51,8 @@ import {
 import { SKYPE_EMOTICONS_GUIDE } from '../skype-emoticons.js'
 import { finalizeTriage, isRateLimited, parseTriage } from '../triage-core.js'
 import { type ActionSurface, actionSurfaceFor, actionSurfaceText, calendarExampleText, postingMechanicsText } from './prompt-surface.js'
-import { LOOP_DEFAULT_FAST_MODEL, allowUnsandboxedByoa, detectEnginesWithStatus, ENGINE_IDS, engineFailureOf, type DetectedEngineSnapshot, type EngineHopReport, type EngineId, type EngineRunResult, type EngineSession, type EngineUsage, enrichDetectedEngines, evaluateRunnableEngines, getAdapter, runEngineDoctor, type RunnableEngineEvaluation, snapshotDetectedEngines } from './engine.js'
+import { LOOP_DEFAULT_FAST_MODEL, allowUnsandboxedByoa, detectEnginesWithStatus, ENGINE_IDS, engineFailureOf, type DetectedEngineSnapshot, type EngineHopReport, type EngineId, type EngineRunResult, type EngineSession, type EngineUsage, enrichDetectedEngines, evaluateRunnableEngines, getAdapter, isInProcessEngine, runEngineDoctor, type RunnableEngineEvaluation, snapshotDetectedEngines } from './engine.js'
+import { type AuthorizeVerdict, Broker, type ScopeConnector } from '../../broker/broker.js'
 import { EngineSessionStore, sessionIdPreview } from './session-store.js'
 import { runWithSessionRecovery } from './session-recovery.js'
 
@@ -627,6 +628,19 @@ function parseArgs(argv: string[]): {
  *  Deliberately NOT applied to the wake-stream (an intentionally long-lived SSE
  *  connection, which has its own idle/backoff handling) or the npm version check. */
 const HTTP_TIMEOUT_MS = Math.max(1_000, Number(process.env.CUMORA_HTTP_TIMEOUT_MS ?? 20_000))
+
+/** Test switch: let connectors reach plain http on a loopback literal, so e2e
+ *  can point one at a fixture server. Every other private address stays
+ *  blocked. Printed once when on. */
+let loopbackWarned = false
+function brokerAllowsLoopbackHttp(): boolean {
+  const on = /^(true|1|yes|on)$/i.test(process.env.CUMORA_BROKER_ALLOW_LOOPBACK_HTTP ?? '')
+  if (on && !loopbackWarned) {
+    loopbackWarned = true
+    console.warn('[computer] CUMORA_BROKER_ALLOW_LOOPBACK_HTTP is on: connectors may call http://127.0.0.1 (tests only)')
+  }
+  return on
+}
 
 async function api<T>(serverUrl: string, path: string, init: RequestInit): Promise<T> {
   const res = await fetch(`${serverUrl}${path}`, {
@@ -2019,6 +2033,7 @@ export class AgentRunner {
   /** Execute exactly one engine attempt. Session capture and the persistent to
    * one-shot transport fallback live here so chat and agenda cannot drift. */
   private async runEngineAttempt(delta: string, resumeSessionId: string | null): Promise<EngineRunResult> {
+    if (!this.engineSession?.alive) await this.ensureBroker()
     const session = this.ensureEngineSession(resumeSessionId)
     const prompt = this.turnPrompt(session, delta)
     let result: EngineRunResult
@@ -2219,6 +2234,54 @@ export class AgentRunner {
   private readonly runtimeCliInvoker = (argv: string[], signal: AbortSignal): Promise<RuntimeCliBrokerResult> =>
     this.invokeRuntimeCli(argv, signal)
 
+  /** undefined = not probed yet; null = no connectors (CLI engine, or a
+   *  server that is not in personal mode). */
+  private broker: Broker | null | undefined = undefined
+
+  /** One JSON round-trip to a runtime route, keeping the status so a 404
+   *  ("not a personal-mode server") is told apart from a transient failure. */
+  private async runtimeJson<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<{ status: number; data: T | null }> {
+    try {
+      const token = await this.ensureToken()
+      const res = await fetch(`${this.cfg.serverUrl}/runtime${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${token}`, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+      })
+      if (res.status === 401 || res.status === 403) this.invalidateToken(token)
+      return { status: res.status, data: res.ok ? await res.json().catch(() => null) as T | null : null }
+    } catch {
+      return { status: 0, data: null }
+    }
+  }
+
+  /** Create the Broker the first time a turn needs an engine session. Only
+   *  in-process engines use it, and only a personal-mode server answers. */
+  private async ensureBroker(): Promise<void> {
+    if (this.broker !== undefined) return
+    if (!isInProcessEngine(this.engine)) { this.broker = null; return }
+    const probe = await this.runtimeJson<{ connectors: ScopeConnector[] }>('GET', '/broker/scope')
+    if (probe.status === 404) { this.broker = null; return }
+    if (!probe.data) return
+    let primed: ScopeConnector[] | null = probe.data.connectors
+    this.broker = new Broker({
+      fetchScope: async () => {
+        if (primed) { const c = primed; primed = null; return c }
+        return (await this.runtimeJson<{ connectors: ScopeConnector[] }>('GET', '/broker/scope')).data?.connectors ?? null
+      },
+      authorize: async (req) => (await this.runtimeJson<AuthorizeVerdict>('POST', '/broker/authorize', req)).data,
+      recordEvent: (event) => {
+        const runId = this.currentRunId
+        if (!runId) return
+        void this.ensureToken().then((token) => runtimeBest(this.cfg.serverUrl, '/events', token, { runId, ...event, stage: 'connector' }))
+          .catch(() => { /* audit is best-effort here; denials are recorded server-side */ })
+      },
+      currentRunId: () => this.currentRunId,
+      allowLoopbackHttp: brokerAllowsLoopbackHttp(),
+    })
+  }
+
   /** Execute one shim request outside the model's sandbox. The broker accepts
    *  only argv strings; identity, URL, Authorization, redirects, and token
    *  refresh remain daemon-owned and cannot be changed by the model. */
@@ -2321,6 +2384,7 @@ export class AgentRunner {
       runtimeCli: this.runtimeCliInvoker,
       historyDir: join(LOOP_HISTORY_ROOT, this.agent.id),
       agentName: this.agent.name,
+      broker: this.broker ?? null,
     })
     if (this.engineSession) {
       console.log(`[computer] ${this.agent.id} engine session ${this.sessionId ? `respawned (resume ${this.sessionId.slice(0, 8)})` : 'spawned fresh'} — persistent, no per-wake cold start`)

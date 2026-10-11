@@ -147,7 +147,9 @@ server 侧的模块不需要单独打包；daemon 侧的模块会被 `agent-cli/
 
 新建表的写法参照 `0002-normalized-conversation-members.ts`：外键要命名，并显式写出 `ON DELETE`。
 
-### 4.1 新表（0011）
+### 4.1 新表
+
+实际编号：0011 是 T03 的个人模式初始化标记，0012 是 T08 的 `connectors` 和 `connector_actions`。其余新表在第一次用到它们的任务里建。
 
 ```sql
 CREATE TABLE connectors (
@@ -386,6 +388,14 @@ flowchart TD
 ## 6. Broker
 
 Broker 运行在 daemon 进程内，每个 bot 一个实例，代码放在 `server/src/broker/`。它是 bot 访问外部世界的唯一通道。
+
+T08 的实际落地（下表是完整规划，第一版合并了几个文件）：
+
+- `definition.ts`：定义的类型、参数校验、拼请求、私网地址判定，server 和 daemon 共用，不依赖第三方包。
+- `broker.ts`：合并了表中的 registry、authorize 和 evidence。授权范围缓存 60 秒；每次调用前都要 authorize，执行时用服务端这次返回的定义，不用缓存；证据编号在每个回合开始时重置。
+- `http-executor.ts`：内容与表中一致。私网地址检查放在 socket 自己的 lookup 里，所以检查的地址就是实际连接的地址；重定向不跟随。
+- `connector.denied` 在服务端写入（`/runtime/broker/authorize`），这样即使 daemon 没有上报也有审计记录；`connector.call` 由 daemon 执行完后通过 `/runtime/events` 上报。
+- YAML 解析放在 `server/src/personal/connector-schema.ts`，daemon 只接收解析好的 JSON。
 
 ### 6.1 组件
 

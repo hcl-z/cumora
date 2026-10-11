@@ -58,6 +58,10 @@ With no `~/.cumora/computer.json` it pairs itself, waiting and retrying every 15
 
 The Chief runs on the built-in `loop` engine: no CLI to install, but the daemon itself needs `OPENAI_API_KEY` in its environment (add it next to the bootstrap token above). Without it the Computers tab lists `loop` as blocked with that reason. `CUMORA_DEFAULT_LOOP_MODEL` overrides the default `gpt-5.5`, and `OPENAI_BASE_URL` points it at a compatible endpoint. `./bin/cumora agent computer --doctor` checks both model tiers.
 
+## Connectors
+
+The 工作台 (Console) entry in the Rail, or the 我 page on mobile, lists connectors. Add one by pasting its YAML; it starts as a draft. Enable it, and turn on "临时任务可读" so bots may call its read actions when you ask them directly. Only https hosts on public addresses are reachable, and write actions are refused until approvals land. Every call and every refusal is recorded in the bot's run timeline.
+
 ## Tests
 
 ```bash

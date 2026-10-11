@@ -20,7 +20,7 @@ import type { EngineHopReport, EngineRunResult, EngineSession, EngineUsage } fro
 import { compactLoopHistory, formatItemsForSummary, requestOverheadTokens, summaryInstructions, type SummaryScope } from './compaction.js'
 import { HistoryStore, loadHistory } from './history.js'
 import { ResponsesError, type ResponsesConfig, type StreamResponses, completeText, createResponsesStreamer, withTransportRetry } from './responses.js'
-import { LOOP_TOOL_DEFS, type RuntimeCliInvoker, type ToolOutcome, isTerminalTurnStatus, runTool } from './tools.js'
+import { type ConnectorBroker, type RuntimeCliInvoker, type ToolOutcome, isTerminalTurnStatus, loopToolDefs, runTool } from './tools.js'
 import { MAX_VERIFICATIONS_PER_TURN, type DeclaredStatus, rejectionMessage, shouldVerifyTerminalCompletion, verifyTerminalCompletion } from './verify.js'
 
 export const LOOP_MAX_HOPS = 200
@@ -46,6 +46,8 @@ export interface LoopSessionOptions {
   resumeSessionId?: string | null
   /** Name the verifier and summarizer refer to. */
   botName?: string
+  /** The bot's Broker; when set, the connector tools are offered. */
+  broker?: ConnectorBroker | null
   /** Injected in tests; defaults to the real Responses API. */
   stream?: StreamResponses
   maxHops?: number
@@ -187,7 +189,7 @@ export class LoopSession implements EngineSession {
     })
     try {
       const outcomes = await Promise.all(calls.map((c) => Promise.race([
-        runTool(c.name, c.arguments, { home: this.opts.home, runtimeCli: this.opts.runtimeCli, signal }),
+        runTool(c.name, c.arguments, { home: this.opts.home, runtimeCli: this.opts.runtimeCli, signal, broker: this.opts.broker ?? null }),
         cancelled,
       ])))
       return { outcomes, interrupted: batch.signal.aborted && !turnSignal.aborted }
@@ -207,12 +209,14 @@ export class LoopSession implements EngineSession {
     this.steerQueue = []
     let turnStart = this.history.length
     this.history.push(userItem(prompt))
+    this.opts.broker?.beginTurn()
+    const tools = loopToolDefs(!!this.opts.broker)
     let usage: EngineUsage = {}
     let lastInputTokens = 0
     let nudges = 0
     let verifications = 0
     let sideEffects: CliSideEffect[] = []
-    const overhead = requestOverheadTokens(this.opts.instructions, LOOP_TOOL_DEFS)
+    const overhead = requestOverheadTokens(this.opts.instructions, tools)
     try {
       const maxHops = this.opts.maxHops ?? LOOP_MAX_HOPS
       for (let hop = 0; hop < maxHops; hop++) {
@@ -243,7 +247,7 @@ export class LoopSession implements EngineSession {
               model: this.opts.model,
               instructions: this.opts.instructions,
               input: this.history,
-              tools: LOOP_TOOL_DEFS,
+              tools,
               maxOutputTokens: MAX_OUTPUT_TOKENS,
               reasoningEffort: 'low',
             }, abort.signal),
