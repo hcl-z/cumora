@@ -1,0 +1,66 @@
+server/src/agents/turn.ts
+  s_3e98741f3cf33e::t_95553b5b9dd5d2 905,907-908
+  s_3e98741f3cf33e::t_1ad66154216771 53
+server/src/agents/computer/loop/compaction.ts
+  s_3e98741f3cf33e::t_5d8adbac22cf18 1-161
+server/src/agents/computer/loop/tools.ts
+  s_3e98741f3cf33e::t_024f4007fc6b15 179-180
+  s_3e98741f3cf33e::t_9f472726e36a60 13
+  s_3e98741f3cf33e::t_c7564b3484265a 97,110-111
+docs/personal-bot/mvp-tasks.md
+  s_3e98741f3cf33e::t_8be090b887de29 94,99-102
+server/src/agents/computer/loop/verify.ts
+  s_3e98741f3cf33e::t_272ce0f0248ac6 1-126
+server/src/__tests__/loop-session.test.ts
+  s_3e98741f3cf33e::t_b485f25ace45c2 97
+  s_3e98741f3cf33e::t_35993e9ce31a28 93-94
+server/src/agents/computer/engine.ts
+  s_3e98741f3cf33e::t_9bf573913c0891 794-796
+  s_3e98741f3cf33e::t_99ed48870839b2 36
+  s_3e98741f3cf33e::t_1ff8043d0e8565 5853-5854
+  s_3e98741f3cf33e::t_9e28a9c3c01cc8 844-847
+  s_3e98741f3cf33e::t_bc8b828c1407c1 5872,5874,5879,5885-5887,5896-5898,5901-5904
+  s_3e98741f3cf33e::t_0dd56a76b71de6 818-823
+server/src/agents/computer/loop/session.ts
+  s_3e98741f3cf33e::t_0fd38c8351276a 4-13,17,20-24,35-36,42-48,52-53,81-84,89-111,113,118,121-123,127-143,148-154,160,163-196,204,208-209,211,213-215,220-237,239-256,259,269,273,276,280-281,292,294,297-324,329,332
+  s_3e98741f3cf33e::t_e4adfd82baf107 285-291
+server/src/__tests__/loop-session-v1.test.ts
+  s_3e98741f3cf33e::t_72f2ff5c2edcda 1-346
+server/src/agents/turn-compaction.ts
+  s_3e98741f3cf33e::t_d1722a8f394bf9 127-164
+server/src/agents/computer/daemon.ts
+  s_3e98741f3cf33e::t_f50ffec3aa028e 1303-1305
+  s_3e98741f3cf33e::t_c489e0788da61f 95-97
+  s_3e98741f3cf33e::t_86c138a1d7877c 2322-2323
+  s_3e98741f3cf33e::t_0973b6af7b802b 2051,2065,2320
+  s_3e98741f3cf33e::t_27330c0bbfc67c 3034
+  s_3e98741f3cf33e::t_41afec258266ac 32
+  s_3e98741f3cf33e::t_7bdd33723f13f1 2245-2246,2250
+  s_3e98741f3cf33e::t_37efeec5092e6d 2317-2319
+docs/personal-bot/mvp-backend-design.md
+  s_3e98741f3cf33e::t_ca74aeabf40d36 345-351
+  s_3e98741f3cf33e::t_9f392f3ade1896 356-360
+server/src/agents/computer/loop/responses.ts
+  s_3e98741f3cf33e::t_8140ef21912a2d 132-158
+  s_3e98741f3cf33e::t_871516bf117792 11
+  s_3e98741f3cf33e::t_11c3fc31a87bb2 87-91,94-95,100-131
+  s_3e98741f3cf33e::t_6889380fec895f 92-93,96-99
+server/src/agents/computer/loop/history.ts
+  s_3e98741f3cf33e::t_8b6c4546a8a783 1-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "7bc07ad73385856a04b752af4a9729ba4e260a46",
+  "prompts": {},
+  "sessions": {
+    "s_3e98741f3cf33e": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_td31b0v6fr5f",
+        "model": "kr-claude-opus-5.5"
+      },
+      "human_author": "hcl-z <1401859664@qq.com>"
+    }
+  }
+}
