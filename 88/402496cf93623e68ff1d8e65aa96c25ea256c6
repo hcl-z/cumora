@@ -1,0 +1,41 @@
+server/src/__tests__/e2e-fakes.test.ts
+  s_3e98741f3cf33e::t_ff6b8dc2f3c485 1-116
+package.json
+  s_3e98741f3cf33e::t_5686117e87e10e 42
+.github/workflows/pr.yml
+  s_3e98741f3cf33e::t_2a83eda2d185df 12-16
+  s_3e98741f3cf33e::t_fb40bc5cf9df73 309-362
+server/src/__e2e__/smoke.e2e.ts
+  s_3e98741f3cf33e::t_0b2df1d91ad8b4 1-40,42-54
+  s_3e98741f3cf33e::t_1b09da20ffb5ff 41
+server/src/__e2e__/stack.ts
+  s_3e98741f3cf33e::t_97a8bf686e1e77 1-242
+deploy/personal/README.md
+  s_3e98741f3cf33e::t_ae3be038689c1d 69-78
+server/src/__e2e__/fake-http.ts
+  s_3e98741f3cf33e::t_475b681d47cb46 1-78
+server/src/__e2e__/cassettes/smoke-allhands.json
+  s_3e98741f3cf33e::t_0ec867de76c05e 1-7,9-50
+  s_3e98741f3cf33e::t_0bf4df5c09105b 8
+docs/personal-bot/mvp-tasks.md
+  s_3e98741f3cf33e::t_033eae4e3e2afe 106-108
+  s_3e98741f3cf33e::t_2a42e3ab5e7e82 123-130
+server/src/__e2e__/fake-openai.ts
+  s_3e98741f3cf33e::t_563294b8c778e1 1-236
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "88402496cf93623e68ff1d8e65aa96c25ea256c6",
+  "prompts": {},
+  "sessions": {
+    "s_3e98741f3cf33e": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_td31b0v6fr5f",
+        "model": "kr-claude-opus-5.5"
+      },
+      "human_author": "hcl-z <1401859664@qq.com>"
+    }
+  }
+}
