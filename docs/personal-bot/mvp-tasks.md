@@ -160,21 +160,21 @@ flowchart LR
 
 依赖：T05。
 
-### T09 凭证库与端到端加密录入 · AFK · L
+### T09 凭证库与端到端加密录入 · AFK · L ✅
 
 做什么：凭证库放在 daemon 侧，开发环境的主密钥存在 macOS 钥匙串里。daemon 上报 ECDH 公钥；新增设备级事件流 `GET /api/computers/me/events`，传递 `vault.put`。前端在浏览器里加密凭证。HTTP 执行器调用时注入凭证，并对输出做脱敏。另外提供命令行入口 `cumora agent computer vault set`。
 
 验收：
-- [ ] 能接入一个需要 API key 的 HTTP 连接器，调用成功。用例是 `server/src/__e2e__/credential.e2e.ts`：按浏览器的方式加密凭证，经 server 转发，daemon 解密后存进 vault，调用连接器时把 key 注入到 `X-API-Key` 里。fixture 服务收到的 key 正确，Chief 正常作答。⏸ 需要 Redis，在 CI 里验证。
-- [ ] 凭证明文不出现在 server 的数据库、server 日志和 server 收到的请求体里。
+- [x] 能接入一个需要 API key 的 HTTP 连接器，调用成功。用例是 `server/src/__e2e__/credential.e2e.ts`：按浏览器的方式加密凭证，经 server 转发，daemon 解密后存进 vault，调用连接器时把 key 注入到 `X-API-Key` 里。fixture 服务收到的 key 正确，Chief 正常作答。已在 CI 运行 38147603829 中通过，用例实际执行，没有跳过。
+- [x] 凭证明文不出现在 server 的数据库、server 日志和 server 收到的请求体里。
   - server 收到的只有密文 `{ v, epk, iv, ct }`，只有 daemon 的私钥能解开，server 只负责转发、不落盘。
   - `connector_credentials` 表只有 `connector_id`、`name`、`updated_at` 三列，集成测试检查了这一点，本地通过。
-  - 同一个 e2e 用例会扫描 server 日志和数据库。⏸ 在 CI 里验证。
-- [ ] B5：用凭证值去扫描日志、run 事件和模型上下文快照，没有命中。
+  - 同一个 e2e 用例扫描了 server 日志和数据库，在 CI 运行 38147603829 中没有发现明文。
+- [x] B5：用凭证值去扫描日志、run 事件和模型上下文快照，没有命中。
   - fixture 服务会把 key 原样回显，模型看到的是 `[REDACTED:quote-key]`。
   - 扫描范围：server 和 daemon 日志、`agent_events`、`messages`、发给模型的全部输入，以及 daemon 的 `~/.cumora` 下的每个文件（vault、loop 历史、agent home）。扫描时同时查明文、URL 编码和 base64 三种形式。
   - 脱敏逻辑本身有单元测试（`broker.test.ts`），覆盖连接器结果、错误信息、run 事件，以及模型把 key 当作参数传进来的情况。
-  - ⏸ 端到端扫描在 CI 里验证。
+  - 端到端扫描在 CI 运行 38147603829 中没有命中；同一次运行里，单元测试 1638 个、集成测试 449 个，都是 0 失败。
 - [x] daemon 离线时，保存凭证会返回 409，前端显示提示。集成测试覆盖了两种情况（没有配对的主机、主机离线），本地通过。前端收到 409 时显示"bot 主机离线，暂时不能保存凭证"。另外，主机在线但控制流没连上（Redis 发布时没有订阅者）也按离线处理，返回 409。
 - [x] 补上 `vault-seal` 加解密往返的单元测试（`vault.test.ts`，7 个）：
   - 浏览器端的 `src/lib/vault-seal.ts`（WebCrypto）加密的内容，daemon 能解开。
