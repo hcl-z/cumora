@@ -33,8 +33,7 @@ import { stripLoneSurrogates } from '../text-safety.js'
 import { isCustomAnthropicEndpoint, readClaudeUserSettings, withClaudeUserSettingsEnv } from './claude-user-settings.js'
 import { isCliVersionAtLeast, probeEngineVersion, probeLocalEngineVersionWithRetry, versionCommandInvocation } from './cli-version.js'
 import { discoverEngineModelCatalog, type EngineModelCatalog } from './model-catalog.js'
-import { applyResponseStreamEvent, consumeResponseStream, newResponseStreamState } from '../turn-stream.js'
-import { createResponsesStreamer, responsesConfigFromEnv } from './loop/responses.js'
+import { completeText, createResponsesStreamer, responsesConfigFromEnv } from './loop/responses.js'
 import { LoopSession, engineUsageFromOpenAI } from './loop/session.js'
 import type { RuntimeCliInvoker } from './loop/tools.js'
 
@@ -792,6 +791,9 @@ export interface EngineHopReport {
   hopIndex?: number      // 1-based position within the current turn
   toolUses?: number      // tool_use entries in the assistant message
   textChars?: number     // total text length the model returned (chars, not tokens)
+  /** Auxiliary calls an in-process engine makes inside a turn; absent means
+   *  the agent's own turn. */
+  purpose?: 'agent-turn' | 'compaction' | 'completion-verify'
 }
 
 /** Args to start a PERSISTENT engine session (spawned ONCE per agent). */
@@ -813,6 +815,12 @@ export interface EngineSessionArgs {
   /** In-process engines reach Cumora through this instead of the MCP shim.
    *  CLI engines ignore it. */
   runtimeCli?: RuntimeCliInvoker
+  /** Daemon-owned directory (outside the agent home) where an in-process
+   *  engine persists its transcript so `resumeSessionId` can restore it. CLI
+   *  engines keep their own transcripts and ignore it. */
+  historyDir?: string | null
+  /** The agent's display name, for in-process engines' auxiliary prompts. */
+  agentName?: string | null
   onLog: (line: string) => void
   /** Fire-and-forget per-hop trajectory report. Called once per assistant
    *  message (Claude) / per turn-completed event (Codex) with that hop's own
@@ -833,8 +841,10 @@ export interface EngineSession {
   send(prompt: string): Promise<EngineRunResult>
   /** Same-turn steering: inject a message into the RUNNING turn at the next safe
    *  stream-json boundary so the agent answers a direct ping mid-task, then
-   *  continues. No-op if no turn is in flight. */
-  steer(text: string): void
+   *  continues. No-op if no turn is in flight. `interrupt` marks a direct ping
+   *  worth cutting a running tool batch short for; engines that cannot do that
+   *  ignore it. */
+  steer(text: string, opts?: { interrupt?: boolean }): void
   /** Process is up and stdin is writable. */
   readonly alive: boolean
   /** The latest session id seen (to `--resume` if the process must be respawned). */
@@ -5839,19 +5849,11 @@ async function loopOneShot(
 ): Promise<EngineClassifyResult> {
   const config = responsesConfigFromEnv(env)
   if (!config) return { text: '', error: 'OPENAI_API_KEY is not set for the daemon (api key missing)', model }
-  const state = newResponseStreamState()
   try {
-    await consumeResponseStream(
-      createResponsesStreamer(config)({ model, input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }] }], maxOutputTokens: 800 }, signal),
-      (event) => applyResponseStreamEvent(state, event),
-    )
+    const r = await completeText(createResponsesStreamer(config), { model, prompt, maxOutputTokens: 800 }, signal)
+    return { text: r.text, usage: engineUsageFromOpenAI(r.usage), model }
   } catch (err) {
     return { text: '', error: err instanceof Error ? err.message : String(err), model }
-  }
-  return {
-    text: Array.from(state.responseTextByPart.values()).join('\n').trim(),
-    usage: engineUsageFromOpenAI(state.responseUsage),
-    model,
   }
 }
 
@@ -5867,17 +5869,22 @@ class LoopAdapter implements EngineAdapter {
   }
 
   private session(args: {
-    home: string; env: NodeJS.ProcessEnv; model?: string | null; instructions: string
+    home: string; env: NodeJS.ProcessEnv; model?: string | null; fastModel?: string | null; instructions: string
     runtimeCli?: RuntimeCliInvoker; onLog: (line: string) => void; onHopUsage?: (r: EngineHopReport) => void
+    historyDir?: string | null; resumeSessionId?: string | null; agentName?: string | null
   }): LoopSession {
     return new LoopSession({
       home: realpathSync(args.home),
       model: args.model || LOOP_DEFAULT_MODEL,
+      fastModel: args.fastModel || LOOP_DEFAULT_FAST_MODEL,
       instructions: args.instructions,
       config: responsesConfigFromEnv(args.env),
       runtimeCli: args.runtimeCli ?? null,
       onLog: args.onLog,
       onHopUsage: args.onHopUsage,
+      historyDir: args.historyDir,
+      resumeSessionId: args.resumeSessionId,
+      botName: args.agentName ?? undefined,
     })
   }
 
@@ -5886,12 +5893,15 @@ class LoopAdapter implements EngineAdapter {
   }
 
   async run(args: EngineRunArgs): Promise<EngineRunResult> {
-    // The one-shot path inlines the standing prompt into `prompt` itself.
-    const session = this.session({ ...args, instructions: '' })
+    // The one-shot path inlines the standing prompt into `prompt` itself, and
+    // keeps no history: its session id must not replace the persistent one.
+    const session = this.session({ ...args, instructions: '', historyDir: null, resumeSessionId: null })
     const onAbort = () => { void session.stop() }
     args.signal.addEventListener('abort', onAbort, { once: true })
-    try { return await session.send(args.prompt) }
-    finally {
+    try {
+      const { sessionId: _ephemeral, ...result } = await session.send(args.prompt)
+      return result
+    } finally {
       args.signal.removeEventListener('abort', onAbort)
       await session.stop()
     }

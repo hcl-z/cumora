@@ -124,6 +124,44 @@ export function estimateHistoryTokens(history: ResponseInputItem[]): number {
   return total
 }
 
+/** Approximate context windows by model family. We pick the model's
+ *  window dynamically so a smaller-context model (gpt-5.4-mini at 128K)
+ *  compacts at the right point — a hardcoded 150K threshold on a 128K
+ *  model would NEVER trigger and the turn would just hit the hard
+ *  ceiling and die. Unknown / unspecified models fall back to 200K.
+ *
+ *  Numbers come from each model's published max input tokens. Slight
+ *  underestimates (round-down) so we leave headroom for the response
+ *  tokens that follow the prompt. Shared by the cloud turn loop and the
+ *  daemon's `loop` engine. */
+export function contextWindowFor(model: string | null): number {
+  const m = (model ?? '').toLowerCase()
+  if (m.includes('gpt-5.4-mini')) return 128_000
+  if (m.includes('gpt-5.4-nano')) return 64_000
+  if (m.includes('gpt-5')) return 200_000             // gpt-5.5, 5.4, 5.3, 5.2 — all ~200K input
+  if (m.includes('gpt-4o')) return 128_000
+  if (m.includes('gpt-4-turbo')) return 128_000
+  return 200_000
+}
+
+/** Soft compaction threshold: 75% of the model's context window. Past
+ *  this point we trigger an LLM-summarized compaction pass — earlier
+ *  tool-call pairs are SUMMARIZED into a concise paragraph, NOT just
+ *  dropped, so the agent retains semantic continuity across very long
+ *  turns. */
+export function compactThresholdFor(model: string | null): number {
+  return Math.floor(contextWindowFor(model) * 0.75)
+}
+
+/** Absolute ceiling: 95% of the model's context window. Even after
+ *  compaction, if the projected input STILL exceeds this — typically
+ *  only when the original user input itself is huge (a giant
+ *  attachment dump) — we break the loop and let the next wake start
+ *  fresh. Should be ultra-rare in practice. */
+export function hardLimitFor(model: string | null): number {
+  return Math.floor(contextWindowFor(model) * 0.95)
+}
+
 /** Maximum byte length of a function_call_output's `output` field after
  *  stage-1 in-place truncation. Tuned so that a bash tool output (the
  *  largest source of bloat in practice — `cumora web read`, `kanban ls`

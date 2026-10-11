@@ -29,6 +29,7 @@ import { promisify } from 'node:util'
 
 const execFileP = promisify(execFile)
 
+import { type CliSideEffect, normalizeCliSideEffects } from '../cli-result.js'
 import { type TokenUsage, usageFromClaude } from '../cost.js'
 import { GLANCE_YIELD_RULES } from '../glance-protocol.js'
 import {
@@ -91,6 +92,9 @@ const AGENTS_ROOT = join(CONFIG_DIR, 'agents')
 // `--resume` the SAME engine session — recovering the in-turn context an
 // interrupted long task was building, instead of starting cold.
 const SESSIONS_DIR = join(CONFIG_DIR, 'sessions')
+// In-process engines (`loop`) keep their transcript here, per agent, outside
+// the model-writable home so the model cannot rewrite its own history.
+const LOOP_HISTORY_ROOT = join(CONFIG_DIR, 'loop')
 // Bounded grace on a forced shutdown (SIGTERM/SIGINT): let an in-flight turn try
 // to finish before we kill the engine child. The OS supervisor SIGKILLs not long
 // after SIGTERM, so this is best-effort for SHORT turns; long tasks rely on the
@@ -1296,6 +1300,9 @@ export interface RuntimeCliBrokerResult {
   text?: string
   exitCode: number
   error?: string
+  /** Typed world effects the server reported (e.g. message.posted). The loop
+   *  engine reads them to decide whether a terminal status needs verifying. */
+  sideEffects?: CliSideEffect[]
 }
 
 /** File-rendezvous broker used by one AgentRunner.
@@ -2041,7 +2048,7 @@ export class AgentRunner {
           fastModel: this.engineFastModel(),
           resumeSessionId,
           onLog: (line) => this.logEngineLine(line),
-          onHopUsage: (r) => this.onEngineHop(r, 'agent-turn'),
+          onHopUsage: (r) => this.onEngineHop(r, r.purpose ?? 'agent-turn'),
           signal: this.teardown.signal,
           runtimeCli: this.runtimeCliInvoker,
         }))
@@ -2055,7 +2062,7 @@ export class AgentRunner {
         fastModel: this.engineFastModel(),
         resumeSessionId,
         onLog: (line) => this.logEngineLine(line),
-        onHopUsage: (r) => this.onEngineHop(r, 'agent-turn'),
+        onHopUsage: (r) => this.onEngineHop(r, r.purpose ?? 'agent-turn'),
         signal: this.teardown.signal,
         runtimeCli: this.runtimeCliInvoker,
       }))
@@ -2235,10 +2242,12 @@ export class AgentRunner {
         const body = await res.text().catch(() => '')
         return { exitCode: 70, error: `HTTP ${res.status} ${body.slice(0, 200)}`.trim() }
       }
-      const data = await res.json() as { text?: unknown; exitCode?: unknown }
+      const data = await res.json() as { text?: unknown; exitCode?: unknown; sideEffects?: unknown }
+      const sideEffects = normalizeCliSideEffects(data.sideEffects)
       return {
         text: typeof data.text === 'string' ? data.text : '',
         exitCode: typeof data.exitCode === 'number' ? data.exitCode : 0,
+        ...(sideEffects.length ? { sideEffects } : {}),
       }
     } catch (err) {
       return { exitCode: 70, error: err instanceof Error ? err.message : String(err) }
@@ -2305,10 +2314,13 @@ export class AgentRunner {
       onLog: (line) => this.logEngineLine(line),
       // Trajectory hook — every assistant hop (Claude) / turn-completed (Codex)
       // shows up here and gets batched to the universal ledger. Purpose is
-      // 'agent-turn' for ALL session-issued hops; triage / agenda / etc. ride
-      // their own purpose-tagged paths (see recordTriageUsage etc.).
-      onHopUsage: (r) => this.onEngineHop(r, 'agent-turn'),
+      // 'agent-turn' for session-issued hops unless an in-process engine tags
+      // its own compaction / completion-verify calls; triage / agenda / etc.
+      // ride their own purpose-tagged paths (see recordTriageUsage etc.).
+      onHopUsage: (r) => this.onEngineHop(r, r.purpose ?? 'agent-turn'),
       runtimeCli: this.runtimeCliInvoker,
+      historyDir: join(LOOP_HISTORY_ROOT, this.agent.id),
+      agentName: this.agent.name,
     })
     if (this.engineSession) {
       console.log(`[computer] ${this.agent.id} engine session ${this.sessionId ? `respawned (resume ${this.sessionId.slice(0, 8)})` : 'spawned fresh'} — persistent, no per-wake cold start`)
@@ -3019,6 +3031,7 @@ export class AgentRunner {
       const body = (latest.body ?? '').replace(/\s+/g, ' ').slice(0, 300)
       session.steer(
         `⚡ A direct message arrived while you work — answer it BRIEFLY, then resume your current task (do NOT drop it). ${who} in ${convo}: "${body}". Reply one line now: \`cumora reply ${convo} 'text'\` — a quick answer, or "on it, mid-task, will follow up". Then continue what you were doing.`,
+        { interrupt: true },
       )
       console.log(`[computer] ${this.agent.id} STEER → live turn (direct msg in ${convo} from ${who})`)
     } catch { /* best-effort; the coalesced rerun still handles it at turn end */ } finally {

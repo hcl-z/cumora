@@ -10,6 +10,7 @@
 import { lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { FunctionTool } from 'openai/resources/responses/responses'
+import type { CliSideEffect } from '../../cli-result.js'
 
 /** Matches the MCP bridge so prompts and argv limits read the same. */
 export const CUMORA_TOOL_NAME = 'mcp__cumora__cli'
@@ -93,7 +94,7 @@ export const LOOP_TOOL_DEFS: FunctionTool[] = [
   },
 ]
 
-export interface RuntimeCliResult { text?: string; exitCode: number; error?: string }
+export interface RuntimeCliResult { text?: string; exitCode: number; error?: string; sideEffects?: CliSideEffect[] }
 export type RuntimeCliInvoker = (argv: string[], signal: AbortSignal) => Promise<RuntimeCliResult>
 
 export interface ToolContext {
@@ -106,6 +107,8 @@ export interface ToolContext {
 export interface ToolOutcome {
   output: string
   turnStatus?: { status: TurnStatus; reason: string; nextStep: string }
+  /** World effects the server reported for a Cumora call. */
+  sideEffects?: CliSideEffect[]
 }
 
 /** Keep the head of oversized output, mark the cut, and never split a UTF-8
@@ -173,7 +176,8 @@ export async function runTool(name: string, rawArgs: string, ctx: ToolContext): 
     const r = await ctx.runtimeCli(argv as string[], ctx.signal)
     const text = [r.text ?? '', r.error ? `error: ${r.error}` : ''].filter(Boolean).join('\n')
     const prefix = r.exitCode === 0 ? '' : `exit ${r.exitCode}\n`
-    return { output: truncateOutput(`${prefix}${text}`.trimEnd() || (r.exitCode === 0 ? 'ok' : `exit ${r.exitCode}`)) }
+    const output = truncateOutput(`${prefix}${text}`.trimEnd() || (r.exitCode === 0 ? 'ok' : `exit ${r.exitCode}`))
+    return r.sideEffects?.length ? { output, sideEffects: r.sideEffects } : { output }
   }
 
   if (name === 'set_turn_status') {

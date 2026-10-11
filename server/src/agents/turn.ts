@@ -50,7 +50,7 @@ import {
   newResponseStreamState,
   type ResponseStreamState,
 } from './turn-stream.js'
-import { compactHistoryWithSummary, estimateHistoryTokens, estimateTokens } from './turn-compaction.js'
+import { compactHistoryWithSummary, compactThresholdFor, estimateHistoryTokens, estimateTokens, hardLimitFor } from './turn-compaction.js'
 import { usageFromOpenAI, addUsage, EMPTY_USAGE, type TokenUsage } from './cost.js'
 import { recordLlmCall, classifyLlmCallError, readStreamUsage, readStreamReasoningTokens } from './llm-ledger.js'
 import { resolveDeclaredAutoRelayTarget } from './auto-relay.js'
@@ -902,45 +902,10 @@ function modelToolOutputPayload(value: unknown): string {
  *  CAN'T rescue the turn (every hop pair is recent + every output is
  *  already terse). At that point we break the loop and let the next
  *  wake start fresh — same as the old `CONTEXT_BUDGET_TOKENS` break,
- *  but it's now the rare failure rather than the common path. */
-/** Approximate context windows by model family. We pick the model's
- *  window dynamically so a smaller-context model (gpt-5.4-mini at 128K)
- *  compacts at the right point — a hardcoded 150K threshold on a 128K
- *  model would NEVER trigger and the turn would just hit the hard
- *  ceiling and die. Unknown / unspecified models fall back to 200K.
+ *  but it's now the rare failure rather than the common path.
  *
- *  Numbers come from each model's published max input tokens. Slight
- *  underestimates (round-down) so we leave headroom for the response
- *  tokens that follow the prompt. */
-function contextWindowFor(model: string | null): number {
-  const m = (model ?? '').toLowerCase()
-  if (m.includes('gpt-5.4-mini')) return 128_000
-  if (m.includes('gpt-5.4-nano')) return 64_000
-  if (m.includes('gpt-5')) return 200_000             // gpt-5.5, 5.4, 5.3, 5.2 — all ~200K input
-  if (m.includes('gpt-4o')) return 128_000
-  if (m.includes('gpt-4-turbo')) return 128_000
-  return 200_000
-}
-
-/** Soft compaction threshold: 75% of the model's context window. Past
- *  this point we trigger an LLM-summarized compaction pass — earlier
- *  tool-call pairs are SUMMARIZED into a concise paragraph, NOT just
- *  dropped, so the agent retains semantic continuity across very long
- *  turns. */
-function compactThresholdFor(model: string | null): number {
-  return Math.floor(contextWindowFor(model) * 0.75)
-}
-
-/** Absolute ceiling: 95% of the model's context window. Even after
- *  compaction, if the projected input STILL exceeds this — typically
- *  only when the original user input itself is huge (a giant
- *  attachment dump) — we break the loop and let the next wake start
- *  fresh. Should be ultra-rare in practice. */
-function hardLimitFor(model: string | null): number {
-  return Math.floor(contextWindowFor(model) * 0.95)
-}
-// `COMPACTED_OUTPUT_BYTES` + `KEEP_RECENT_PAIRS` live in turn-compaction.ts
-// — turn.ts only needs the token budgets above.
+ *  The budgets (`contextWindowFor`, `compactThresholdFor`, `hardLimitFor`)
+ *  live in turn-compaction.ts, shared with the daemon's `loop` engine. */
 
 /**
  * Cap how many messages per conversation we render into the wake prompt. The

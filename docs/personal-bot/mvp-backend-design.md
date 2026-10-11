@@ -342,21 +342,22 @@ flowchart TD
 | 机制 | 来源 | 做法 |
 |---|---|---|
 | 流式解析 | `turn-stream.ts`（`consumeResponseStream`、`applyResponseStreamEvent`，以及空闲 4 分钟、总时长 6 分钟两个超时） | 直接 import，不改代码 |
-| 摘要压缩 | `turn-compaction.ts:182` `compactHistoryWithSummary`；阈值取上下文的 75%，硬上限沿用 `hardLimitFor` | 直接 import；`contextWindowFor` 和 `compactThresholdFor`（`turn.ts:915`、`:930`）挪进公共模块 |
-| 状态协议 | `set_turn_status` 的取值和提醒逻辑（`turn.ts:2817` 起） | 照搬：模型直接输出的文字不会发出，必须调用 `cumora reply` 或 `set_turn_status` 转发 |
-| 完成复核 | `turn.ts:1128` `shouldVerifyTerminalCompletion`、`:1181` `verifyTerminalCompletion` | 搬进 `verify.ts`，复核模型用 `OPENAI_MODEL_SUPPORT` |
-| 插话中止 | `turn.ts:2942` 每批工具一个 AbortController | 由 `session.steer()` 触发中止 |
-| 输出截断 | `MODEL_TOOL_OUTPUT_BYTES = 8_000`（`turn.ts:853`） | 照搬 |
-| 重试 | 连接失败重试 2 次，基础退避 500ms；图片拉取失败时去掉图片重试一次（`turn.ts:336`、`:2566`） | 照搬 |
-| 模型守卫 | `model-policy.ts` 的 `enforceModelPolicy` | 主力调用标为 `agent-turn`，压缩、复核标为对应的辅助用途 |
+| 摘要压缩 | `turn-compaction.ts` `compactHistoryWithSummary`；阈值取上下文的 75%，硬上限沿用 `hardLimitFor` | `contextWindowFor`、`compactThresholdFor`、`hardLimitFor` 已从 turn.ts 挪进 turn-compaction.ts，两边共用。loop 的 history 跨回合，turn.ts 只在回合内压缩，所以 `loop/compaction.ts` 分两步：先把之前的回合折成一条摘要，当前回合仍然过大时再交给 `compactHistoryWithSummary`。摘要失败时，第一步丢弃旧回合并留标记，第二步退回 drop-and-marker。压缩后仍超过 95% 的，返回 `context-overflow`，错误文字里带 "context window"，daemon 据此让下次唤醒开新会话 |
+| 状态协议 | `set_turn_status` 的取值和提醒逻辑（`turn.ts:2817` 起） | 照搬：模型直接输出的文字不会发出，必须调用 `cumora reply` 或 `set_turn_status` 转发。提醒文字和 turn.ts 一致，一个回合最多提醒 2 次，第 3 次判为协议违规 |
+| 完成复核 | `turn.ts:1128` `shouldVerifyTerminalCompletion`、`:1181` `verifyTerminalCompletion` | 搬进 `verify.ts`，提示词和解析规则保持一致（turn.ts 依赖服务端的数据库和 LLM 客户端，daemon 包里不能引用，只能手工同步）。用辅助模型。触发条件看真实的副作用：daemon 现在把 `/runtime/cli` 返回的 `sideEffects` 原样传下来，"已经 reply" 的判断和 turn.ts 用的是同一个函数。复核出错按"未完成"处理，和 turn.ts 一样；每个回合最多复核 2 次，超过就接受终态 |
+| 插话中止 | `turn.ts:2942` 每批工具一个 AbortController | `steer(text, { interrupt: true })` 会中止正在跑的那批工具。daemon 只对直接点名的消息传 `interrupt`，群里有新消息的提醒仍然等到 hop 边界再送达。被中止的工具返回固定文字，告诉模型这次调用可能已经生效，重复之前先确认，以免同一条回复发两遍 |
+| 输出截断 | `MODEL_TOOL_OUTPUT_BYTES = 8_000`（`turn.ts:853`） | 照搬（T04 已完成） |
+| 重试 | 连接失败重试 2 次，基础退避 500ms；图片拉取失败时去掉图片重试一次（`turn.ts:336`、`:2566`） | 连接失败照搬，识别规则和 turn.ts 相同。429、鉴权失败、流超时都不重试：429 由 daemon 的冷却机制接管，流超时已经耗掉了几分钟。图片重试目前用不上，loop 还没有图片输入 |
+| 模型守卫 | `model-policy.ts` 的 `enforceModelPolicy` | daemon 侧没有 `enforceModelPolicy`，它属于服务端。压缩和复核走 `fastModel`（默认 `gpt-5.4-mini`），并通过 `EngineHopReport.purpose` 以 `compaction`、`completion-verify` 记账，主力调用仍记为 `agent-turn` |
 | 不使用 `previous_response_id` | `turn.ts:2662` | 照搬：每个 hop 重发完整的 history，换来跨重启可以恢复 |
 
 ### 5.4 会话持久化与恢复
 
-- 位置：`~/.cumora/loop/<agentId>/history.jsonl`，每个 hop 结束后追加写入，权限设为 `0600`。
-- `sessionId` 就是这个历史文件的 id；daemon 现有的 `~/.cumora/sessions/<agentId>.session` 记录它。
-- 进程重启后，按 `resumeSessionId` 读回历史；读取失败则开一个新会话，与现有约定"恢复失败就开新线程"一致。
-- 压缩之后，用压缩结果原子替换整个文件（先写临时文件，再 rename）。
+- 位置：`~/.cumora/loop/<agentId>/history.jsonl`，在 agent home 之外，模型改不了自己的历史。daemon 通过 `EngineSessionArgs.historyDir` 把路径传进来。目录权限 `0700`，文件权限 `0600`。
+- 格式：第一行是 header，记录 format、version 和 sessionId；之后每行一个 `ResponseInputItem`。每个 hop 开始前和回合结束时追加新条目。工具调用和它的输出一起追加，所以历史里不会留下没有配对的调用。
+- `sessionId` 就是 header 里的 id；daemon 现有的 `~/.cumora/sessions/<agentId>.session` 记录它。一次性的 `run()` 不写历史，也不返回 sessionId，所以不会覆盖持久会话的 id。
+- 进程重启后，按 `resumeSessionId` 读回历史。只容忍最后一行被截断（追加写到一半时崩溃）；其他任何损坏、header 属于别的会话，或者文件不存在，都会开一个新会话、换一个新 id，与现有约定"恢复失败就开新线程"一致。读回时会丢掉没有配对的 call 或 output。
+- 压缩之后，用压缩结果原子替换整个文件（先写临时文件，再 rename）。写入失败只记日志，下次同步时整体重写，不会让正在内存里运行的回合失败。
 
 ### 5.5 工具定义
 

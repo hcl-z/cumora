@@ -91,14 +91,15 @@ flowchart LR
 
 依赖：T03。
 
-### T05 loop 引擎 v1：移植生产机制 · AFK · L
+### T05 loop 引擎 v1：移植生产机制 · AFK · L ✅
 
 做什么：把后端文档 5.3 节的机制全部移植过来，包括摘要压缩、状态协议提醒、完成复核、插话中止工具批次、8KB 截断、两类重试、错误映射到 `EngineFailure`；再加上 history.jsonl 的持久化和恢复。
 
 验收：
-- [ ] 用 mock provider 写单元测试，覆盖：压缩被触发、连续两次没声明状态后判为协议违规、插话中止正在执行的工具、429 进入冷却、恢复失败时开新会话。
-- [ ] 重启 daemon 后，会话从 history.jsonl 恢复，上下文不丢。
-- [ ] `guard:big-brain` 通过：压缩和复核用的是辅助模型。
+- [x] 用 mock provider 写单元测试（`loop-session-v1.test.ts`，15 个），覆盖：压缩被触发（摘要走辅助模型；摘要失败时丢弃旧回合；压缩后仍放不下时返回 context-overflow）、连续两次没声明状态后判为协议违规、插话中止正在执行的工具（以及非中止的插话会等工具跑完）、连接失败重试两次、429 不重试并让 daemon 的 `classifyTurnOutcome` 判为 rate-limited 进入冷却、恢复失败时开新会话（文件不存在、中间行损坏、属于别的会话三种情况）。另外覆盖完成复核的拒绝、跳过、出错和次数上限。
+- [x] 重启 daemon 后，会话从 history.jsonl 恢复，上下文不丢：测试中用同一个 historyDir 和 sessionId 新建一个会话，下一次请求里带着上一个会话的内容；同时覆盖了最后一行被截断、未配对调用的修复，以及压缩后原子重写文件。⏸ 真正重启 daemon 进程的验证要等 Redis 和真实 key，放到 T06/T07。
+- [x] `guard:big-brain` 通过：压缩和复核用的是辅助模型（`fastModel`，默认 `gpt-5.4-mini`），记账用途分别是 `compaction` 和 `completion-verify`，测试中有断言。
+- 实现说明：daemon 现在把 `/runtime/cli` 返回的 `sideEffects` 透传给引擎，复核据此判断"是否已经 reply"，不靠猜命令文本。`contextWindowFor` 等三个预算函数挪进了 turn-compaction.ts，turn.ts 改为 import。agent-cli 包从 409KB 增加到 430KB，里面没有混进 pg、ioredis 或 openai SDK。
 
 依赖：T04。
 

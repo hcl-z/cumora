@@ -90,10 +90,11 @@ test('plain text without a status is nudged, then the turn fails after the limit
   const { s, requests } = session([{ text: 'all good' }, { text: 'still talking' }, { text: 'again' }])
   const r = await s.send('wake')
   assert.equal(r.exitCode, 1)
-  assert.match(r.error ?? '', /without set_turn_status/)
+  assert.match(r.error ?? '', /missing turn-status declarations/)
+  assert.equal(r.failure?.kind, 'unknown')
   assert.equal(requests.length, 3)
   const nudge = JSON.stringify(requests[1].input.at(-1))
-  assert.match(nudge, /not shown to anyone/)
+  assert.match(nudge, /cannot see plain assistant output/)
 })
 
 test('a message steered in mid-turn is delivered before the turn may end', async () => {
