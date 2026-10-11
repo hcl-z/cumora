@@ -1,0 +1,84 @@
+server/src/__integration__/personal-onboarding.test.ts
+  s_3e98741f3cf33e::t_ac8627a5c2514b 109-111
+src/lib/engines.ts
+  s_3e98741f3cf33e::t_dc1621567c7b24 43
+  s_3e98741f3cf33e::t_0630cda84b553d 14,30-31
+server/src/__tests__/loop-tools.test.ts
+  s_3e98741f3cf33e::t_bdb90b9ec95393 1-103
+server/src/agents/computer/registry.ts
+  s_3e98741f3cf33e::t_6fa89a51ffb828 29
+  s_3e98741f3cf33e::t_7408bf4213cb46 841-842
+  s_3e98741f3cf33e::t_8c7ff9fd6dda51 126-127
+  s_3e98741f3cf33e::t_68334b7853bb47 73
+  s_3e98741f3cf33e::t_1048013faf534b 791
+server/src/agents/computer/daemon.ts
+  s_3e98741f3cf33e::t_2a27e7d3868114 53
+  s_3e98741f3cf33e::t_23b66f35ba32d2 2536
+  s_3e98741f3cf33e::t_d73b1284d042f9 2046
+  s_3e98741f3cf33e::t_f5a2a0c4a217f3 807-809
+  s_3e98741f3cf33e::t_addef35500ddcc 2060
+  s_3e98741f3cf33e::t_3619a765b5e415 2209-2214
+  s_3e98741f3cf33e::t_f4a153f7ba7672 2311
+server/src/agents/computer/model-catalog.ts
+  s_3e98741f3cf33e::t_06367009dc7a8a 137-148
+deploy/personal/README.md
+  s_3e98741f3cf33e::t_74ba0ae2f49bc6 59
+server/src/agents/computer/engine.ts
+  s_3e98741f3cf33e::t_93032b9f72ffb8 505-516
+  s_3e98741f3cf33e::t_35306a13fcb71d 596-598
+  s_3e98741f3cf33e::t_a1254686eb4058 5945
+  s_3e98741f3cf33e::t_54e4583c44d532 553-557
+  s_3e98741f3cf33e::t_2c2f2f74101c71 6119-6121
+  s_3e98741f3cf33e::t_398e37c846412c 5926
+  s_3e98741f3cf33e::t_e7196a88ae7536 388,390-392,397-415
+  s_3e98741f3cf33e::t_edcc464564093b 5827-5914
+  s_3e98741f3cf33e::t_889c0b6cd94d12 5988
+  s_3e98741f3cf33e::t_82d5f8bf4af1de 813-815
+  s_3e98741f3cf33e::t_05e77e48160f9a 36-39
+server/src/__tests__/loop-session.test.ts
+  s_3e98741f3cf33e::t_1ee457fc68e2ab 1-168
+src/admin/api.ts
+  s_3e98741f3cf33e::t_0567bf4021e2ec 123
+server/src/agents/observability.ts
+  s_3e98741f3cf33e::t_abc6caab9746a1 7
+server/src/agents/computer/cli-version.ts
+  s_3e98741f3cf33e::t_e630145e81ec33 133-137
+server/src/agents/runtime/byoa-source.ts
+  s_3e98741f3cf33e::t_387f29b80701ee 14
+server/src/agents/computer/loop/session.ts
+  s_3e98741f3cf33e::t_30408b777ee1c5 1-173
+src/api/client.ts
+  s_3e98741f3cf33e::t_3eeb1a6928a71e 420
+server/src/agents/llm-ledger.ts
+  s_3e98741f3cf33e::t_4ddd65f52fb1cf 78
+src/types.ts
+  s_3e98741f3cf33e::t_09816658412976 10
+server/src/__tests__/loop-registry.test.ts
+  s_3e98741f3cf33e::t_7c97a9337cda1d 1-59
+server/src/agents/computer/loop/responses.ts
+  s_3e98741f3cf33e::t_a3556d4af924a9 1-136
+docs/personal-bot/mvp-tasks.md
+  s_3e98741f3cf33e::t_91f6c27652d5c4 80,85-90
+docs/personal-bot/mvp-backend-design.md
+  s_3e98741f3cf33e::t_1fe6e4d61b6ceb 288-294,301-306,309-311
+server/src/personal/onboard.ts
+  s_3e98741f3cf33e::t_b154c85a237c26 87-88,90-91
+server/src/agents/computer/loop/tools.ts
+  s_3e98741f3cf33e::t_51321530d156ec 1-223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "bd3e5929b9e7bae52ed562e803833e012a9d7cee",
+  "prompts": {},
+  "sessions": {
+    "s_3e98741f3cf33e": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_td31b0v6fr5f",
+        "model": "kr-claude-opus-5.5"
+      },
+      "human_author": "hcl-z <1401859664@qq.com>"
+    }
+  }
+}
