@@ -165,11 +165,29 @@ flowchart LR
 做什么：凭证库放在 daemon 侧，开发环境的主密钥存在 macOS 钥匙串里。daemon 上报 ECDH 公钥；新增设备级事件流 `GET /api/computers/me/events`，传递 `vault.put`。前端在浏览器里加密凭证。HTTP 执行器调用时注入凭证，并对输出做脱敏。另外提供命令行入口 `cumora agent computer vault set`。
 
 验收：
-- [ ] 能接入一个需要 API key 的 HTTP 连接器，调用成功。
+- [ ] 能接入一个需要 API key 的 HTTP 连接器，调用成功。用例是 `server/src/__e2e__/credential.e2e.ts`：按浏览器的方式加密凭证，经 server 转发，daemon 解密后存进 vault，调用连接器时把 key 注入到 `X-API-Key` 里。fixture 服务收到的 key 正确，Chief 正常作答。⏸ 需要 Redis，在 CI 里验证。
 - [ ] 凭证明文不出现在 server 的数据库、server 日志和 server 收到的请求体里。
+  - server 收到的只有密文 `{ v, epk, iv, ct }`，只有 daemon 的私钥能解开，server 只负责转发、不落盘。
+  - `connector_credentials` 表只有 `connector_id`、`name`、`updated_at` 三列，集成测试检查了这一点，本地通过。
+  - 同一个 e2e 用例会扫描 server 日志和数据库。⏸ 在 CI 里验证。
 - [ ] B5：用凭证值去扫描日志、run 事件和模型上下文快照，没有命中。
-- [ ] daemon 离线时，保存凭证会返回 409，前端显示提示。
-- [ ] 补上 `vault-seal` 加解密往返的单元测试。
+  - fixture 服务会把 key 原样回显，模型看到的是 `[REDACTED:quote-key]`。
+  - 扫描范围：server 和 daemon 日志、`agent_events`、`messages`、发给模型的全部输入，以及 daemon 的 `~/.cumora` 下的每个文件（vault、loop 历史、agent home）。扫描时同时查明文、URL 编码和 base64 三种形式。
+  - 脱敏逻辑本身有单元测试（`broker.test.ts`），覆盖连接器结果、错误信息、run 事件，以及模型把 key 当作参数传进来的情况。
+  - ⏸ 端到端扫描在 CI 里验证。
+- [x] daemon 离线时，保存凭证会返回 409，前端显示提示。集成测试覆盖了两种情况（没有配对的主机、主机离线），本地通过。前端收到 409 时显示"bot 主机离线，暂时不能保存凭证"。另外，主机在线但控制流没连上（Redis 发布时没有订阅者）也按离线处理，返回 409。
+- [x] 补上 `vault-seal` 加解密往返的单元测试（`vault.test.ts`，7 个）：
+  - 浏览器端的 `src/lib/vault-seal.ts`（WebCrypto）加密的内容，daemon 能解开。
+  - 换了连接器或名字、换了主机密钥、密文被篡改，都会拒绝。
+  - vault 文件权限是 0600，文件里没有明文，也没有明文的 ECDH 私钥；换主密钥后打不开；条目被复制到别的名字下也解不开。
+  - `vault set` 命令行写入后，正在运行的 daemon 能读到；脱敏覆盖明文、URL 编码和 base64 三种形式。
+- 实现说明：
+  - 没有新增 `GET /api/computers/me/events`，而是复用了现有的设备级控制流 `/api/computers/me/control-stream`。它本来就是按 computer 划分、经 Redis 广播的 SSE。新增了 `vault.put` 和 `vault.delete` 两种事件。daemon 处理完后调用 `POST /api/computers/me/vault-ack` 回执，回执暂存在 Redis 里，按请求 id 取。只有请求发往的那台 computer 能回执。
+  - 公钥和凭证清单（只有名字）在每次控制流连上时上报，接口是 `/vault-key` 和 `/vault-inventory`。`vault set` 写完后也会上报一次。
+  - 主密钥的读取顺序：`CUMORA_VAULT_MASTER_KEY_FILE`，然后是 Docker secret，然后是 macOS 钥匙串（通过 `security -i` 从 stdin 写入，不出现在命令行参数里），最后是 `~/.cumora/vault.key`（会打印警告）。e2e 用一次性的密钥文件，不会碰钥匙串。
+  - 加密内容里带上了 `connector`，所以 server 没法把一个连接器的凭证挪给另一个连接器用。这一点对设计文档 7.2 做了补充。
+  - 连接器 YAML 新增 `auth` 字段，支持 `header`、`bearer`、`query` 三种方式。Host、Cookie 这类会改变请求本身的 header 不能用来放凭证。
+  - 删除凭证的接口有了（`DELETE …/credentials/:name`），前端还没有放删除按钮，交给 T10 的向导。`vault rm` 命令也没做。
 
 依赖：T08。
 

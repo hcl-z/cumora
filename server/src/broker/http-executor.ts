@@ -42,6 +42,8 @@ export interface ExecuteOptions {
   allowLoopbackHttp?: boolean
   /** Test seam for DNS. */
   resolve?: (host: string) => Promise<LookupAddress[]>
+  /** The vault value for `def.auth` (the Broker looks it up). */
+  credential?: string | null
 }
 
 /** Token bucket per connector: `perMinute` calls, refilled continuously. */
@@ -102,7 +104,7 @@ export async function executeHttp(
   args: Record<string, unknown>,
   opts: ExecuteOptions = {},
 ): Promise<HttpResult> {
-  const built = buildRequest(def, action, args)
+  const built = buildRequest(def, action, args, opts.credential)
   const allowLoopback = opts.allowLoopbackHttp === true
   checkUrl(built.url, allowLoopback)
   const timeoutMs = opts.timeoutMs ?? HTTP_TIMEOUT_MS
@@ -125,6 +127,7 @@ export async function executeHttp(
       headers: {
         Accept: 'application/json, text/plain;q=0.9, */*;q=0.1',
         'User-Agent': 'cumora-broker/1',
+        ...built.headers,
         ...(built.body !== null ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(built.body) } : {}),
       },
       lookup: guardedLookup(opts.resolve ?? systemResolve, allowLoopback),

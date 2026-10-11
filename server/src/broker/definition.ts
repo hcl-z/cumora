@@ -25,6 +25,13 @@ export interface ConnectorAction {
   description?: string
 }
 
+/** Where the daemon puts a vault credential on every call. The definition
+ *  only names the credential; its value never leaves the daemon's vault. */
+export type ConnectorAuth =
+  | { type: 'header'; name: string; credential: string }
+  | { type: 'bearer'; credential: string }
+  | { type: 'query'; name: string; credential: string }
+
 export interface ConnectorDefinition {
   slug: string
   kind: 'http'
@@ -32,7 +39,25 @@ export interface ConnectorDefinition {
   description?: string
   baseUrl: string
   rateLimitPerMinute: number
+  auth?: ConnectorAuth
   actions: ConnectorAction[]
+}
+
+export const HEADER_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/
+export const CREDENTIAL_NAME_RE = /^[a-z0-9][a-z0-9_.-]{0,63}$/
+/** Headers a connector may not set: they would let a definition steer the
+ *  request itself rather than authenticate it. */
+export const FORBIDDEN_AUTH_HEADERS = new Set([
+  'host', 'content-length', 'content-type', 'transfer-encoding', 'connection', 'cookie', 'te', 'upgrade',
+  'proxy-authorization', 'x-forwarded-for', 'x-forwarded-host', 'x-real-ip',
+])
+
+/** Header or query name the credential is sent under, or null for none. */
+export function authTarget(auth: ConnectorAuth | undefined): { header?: string; query?: string } | null {
+  if (!auth) return null
+  if (auth.type === 'bearer') return { header: 'Authorization' }
+  if (auth.type === 'header') return { header: auth.name }
+  return { query: auth.name }
 }
 
 export const DEFAULT_RATE_LIMIT_PER_MINUTE = 60
@@ -88,12 +113,13 @@ export function validateArgs(action: ConnectorAction, args: unknown): string[] {
   return problems
 }
 
-export interface BuiltRequest { url: URL; method: HttpMethod; body: string | null }
+export interface BuiltRequest { url: URL; method: HttpMethod; body: string | null; headers: Record<string, string> }
 
 /** The concrete request for a validated call. Path params are URL-encoded so
  *  a value cannot add segments; the rest go in the query string for
- *  GET/HEAD/DELETE and in a JSON body otherwise. */
-export function buildRequest(def: ConnectorDefinition, action: ConnectorAction, args: Record<string, unknown>): BuiltRequest {
+ *  GET/HEAD/DELETE and in a JSON body otherwise. `credential` is the vault
+ *  value for `def.auth`, applied last so an arg cannot override it. */
+export function buildRequest(def: ConnectorDefinition, action: ConnectorAction, args: Record<string, unknown>, credential?: string | null): BuiltRequest {
   const inPath = new Set(pathParams(action.path))
   const path = action.path.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_m, name: string) => encodeURIComponent(String(args[name] ?? '')))
   const base = def.baseUrl.replace(/\/+$/, '')
@@ -106,7 +132,14 @@ export function buildRequest(def: ConnectorDefinition, action: ConnectorAction, 
   } else {
     body = JSON.stringify(Object.fromEntries(rest))
   }
-  return { url, method: action.method, body }
+  const headers: Record<string, string> = {}
+  if (def.auth) {
+    if (!credential) throw new Error(`credential ${def.auth.credential} is not set`)
+    if (def.auth.type === 'bearer') headers.Authorization = `Bearer ${credential}`
+    else if (def.auth.type === 'header') headers[def.auth.name] = credential
+    else url.searchParams.set(def.auth.name, credential)
+  }
+  return { url, method: action.method, body, headers }
 }
 
 // ── address policy ──────────────────────────────────────────────────────

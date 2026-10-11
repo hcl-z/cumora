@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "fallbackOneshot": "{\"actionable\":true,\"complete\":true,\"reason\":\"the owner asked Chief directly\",\"responseMode\":\"me\",\"promptNote\":\"\",\"next_step\":\"\"}",
+  "interactions": [
+    {
+      "kind": "agent",
+      "note": "Chief reads the quote from a connector that needs an API key",
+      "match": "E2E-KEYED",
+      "events": [
+        {
+          "type": "response.output_item.added",
+          "output_index": 0,
+          "item": {
+            "type": "function_call",
+            "id": "fc_keyed_0",
+            "call_id": "call_keyed_0",
+            "name": "connector_call",
+            "arguments": "{\"action\":\"keyed-data.quote\",\"args\":{\"symbol\":\"ACME\"}}"
+          }
+        },
+        { "type": "response.completed", "response": { "status": "completed", "output": [], "usage": { "input_tokens": 100, "output_tokens": 10, "input_tokens_details": { "cached_tokens": 0 } } } }
+      ]
+    },
+    {
+      "kind": "agent",
+      "note": "the API echoed the key, and the model sees it redacted",
+      "match": "^(?=[\\s\\S]*REDACTED:quote-key)[\\s\\S]*?(?<convo>allhands-[A-Za-z0-9_-]+)",
+      "events": [
+        {
+          "type": "response.output_item.added",
+          "output_index": 0,
+          "item": {
+            "type": "function_call",
+            "id": "fc_keyed_1",
+            "call_id": "call_keyed_1",
+            "name": "mcp__cumora__cli",
+            "arguments": "{\"argv\":[\"reply\",\"{{convo}}\",\"E2E-KEYED-ANSWER ACME 42.5 [ev_1]\"]}"
+          }
+        },
+        { "type": "response.completed", "response": { "status": "completed", "output": [], "usage": { "input_tokens": 120, "output_tokens": 10, "input_tokens_details": { "cached_tokens": 0 } } } }
+      ]
+    },
+    {
+      "kind": "agent",
+      "note": "then declares the turn done",
+      "match": "E2E-KEYED-ANSWER",
+      "events": [
+        {
+          "type": "response.output_item.added",
+          "output_index": 0,
+          "item": {
+            "type": "function_call",
+            "id": "fc_keyed_2",
+            "call_id": "call_keyed_2",
+            "name": "set_turn_status",
+            "arguments": "{\"status\":\"done\",\"reason\":\"answered\",\"next_step\":\"\"}"
+          }
+        },
+        { "type": "response.completed", "response": { "status": "completed", "output": [], "usage": { "input_tokens": 140, "output_tokens": 5, "input_tokens_details": { "cached_tokens": 0 } } } }
+      ]
+    }
+  ]
+}

@@ -15,6 +15,8 @@ export interface FakeRoute {
   headers?: Record<string, string>
   /** Delay before answering, for timeout tests. */
   delayMs?: number
+  /** Answer from the request itself (e.g. check an API key, echo it back). */
+  respond?: (req: FakeHttpRequest) => { status?: number; body?: unknown }
 }
 
 export interface FakeHttpRequest {
@@ -53,8 +55,9 @@ export class FakeHttp {
           return
         }
         if (r.delayMs) await new Promise((done) => setTimeout(done, r.delayMs))
-        res.writeHead(r.status ?? 200, { 'Content-Type': 'application/json', ...r.headers })
-        res.end(typeof r.body === 'string' ? r.body : JSON.stringify(r.body ?? {}))
+        const answer = r.respond ? r.respond(this.requests[this.requests.length - 1]) : { status: r.status, body: r.body }
+        res.writeHead(answer.status ?? 200, { 'Content-Type': 'application/json', ...r.headers })
+        res.end(typeof answer.body === 'string' ? answer.body : JSON.stringify(answer.body ?? {}))
       })()
     })
     await new Promise<void>((resolve) => this.server!.listen(0, '127.0.0.1', resolve))

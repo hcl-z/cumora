@@ -124,6 +124,8 @@ export interface Stack {
   companyId: string
   server: Proc
   daemon: Proc
+  /** The daemon's HOME (its ~/.cumora, including the vault file). */
+  home: string
   /** Authenticated JSON call against /api as the owner. */
   api<T = unknown>(path: string, init?: { method?: string; body?: unknown }): Promise<T>
   /** Write both processes' logs to `path` (CI uploads them on failure). */
@@ -138,6 +140,9 @@ export async function startStack(opts: { cassette: Cassette }): Promise<Stack> {
   const serverUrl = `http://127.0.0.1:${port}`
   const bootstrapToken = randomBytes(24).toString('hex')
   const home = await mkdtemp(join(tmpdir(), 'cumora-e2e-home-'))
+  // The daemon's vault master key: a throwaway file, never the real keychain.
+  const vaultKeyFile = join(home, 'vault-master.key')
+  await writeFile(vaultKeyFile, `${randomBytes(32).toString('base64')}\n`, { mode: 0o600 })
 
   const common: NodeJS.ProcessEnv = {
     PATH: process.env.PATH,
@@ -193,6 +198,7 @@ export async function startStack(opts: { cassette: Cassette }): Promise<Stack> {
       HOME: home,
       CUMORA_PERSONAL_BOOTSTRAP_TOKEN: bootstrapToken,
       CUMORA_BROKER_ALLOW_LOOPBACK_HTTP: '1',
+      CUMORA_VAULT_MASTER_KEY_FILE: vaultKeyFile,
     })
 
     const api = async <T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> => {
@@ -211,7 +217,7 @@ export async function startStack(opts: { cassette: Cassette }): Promise<Stack> {
 
     const d = daemon
     return {
-      serverUrl, openai, token, companyId, server, daemon: d, api, stop,
+      serverUrl, openai, token, companyId, server, daemon: d, api, stop, home,
       dumpLogs: async (path) => {
         const section = (p: Proc) => `===== ${p.name} =====\n${p.lines.join('\n')}\n`
         const requests = `===== fake-openai =====\n${JSON.stringify({ received: openai.received, unmatched: openai.unmatched }, null, 2)}\n`

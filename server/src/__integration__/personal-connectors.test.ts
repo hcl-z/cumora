@@ -136,6 +136,38 @@ test('[integration] the ad-hoc scope holds only read actions of active, ad-hoc c
   assert.deepEqual(await brokerScope('co-elsewhere'), [])
 })
 
+test('[integration] credentials need the bot host online; only names are ever stored', async () => {
+  const AUTH_YAML = YAML.replace('base_url:', 'auth: { type: header, name: X-API-Key, credential: md-key }\nbase_url:')
+  const created = await call('POST', '/personal/connectors', { yaml: AUTH_YAML })
+  const id = (created.json.connector as { id: string }).id
+  const detail = await call('GET', `/personal/connectors/${id}`)
+  assert.deepEqual((detail.json.connector as { credentials: unknown }).credentials, [{ name: 'md-key', updatedAt: null }])
+
+  const sealed = { v: 1, epk: { kty: 'EC', crv: 'P-256', x: 'x', y: 'y' }, iv: 'aaaa', ct: 'bbbb' }
+  // No computer paired yet.
+  assert.equal((await call('GET', '/personal/vault-key')).status, 409)
+  assert.equal((await call('POST', `/personal/connectors/${id}/credentials`, { name: 'md-key', sealed })).status, 409)
+
+  // A paired but offline host: still 409, with the message the console shows.
+  await pool.query(
+    `INSERT INTO computers (id, company_id, owner_user_id, name, kind, status, vault_public_key)
+     VALUES ('comp-test', $1, $2, 'host', 'byoa', 'offline', '{"kty":"EC","crv":"P-256","x":"x","y":"y"}'::jsonb)`,
+    [COMPANY, OWNER],
+  )
+  const key = await call('GET', '/personal/vault-key')
+  assert.equal(key.status, 200)
+  assert.equal((key.json as { online: boolean }).online, false)
+  const offline = await call('POST', `/personal/connectors/${id}/credentials`, { name: 'md-key', sealed })
+  assert.equal(offline.status, 409)
+  assert.match(String(offline.json.error), /bot host is offline/)
+
+  // Validation: an unknown credential name, a malformed blob.
+  assert.equal((await call('POST', `/personal/connectors/${id}/credentials`, { name: 'other', sealed })).status, 404)
+  assert.equal((await call('POST', `/personal/connectors/${id}/credentials`, { name: 'md-key', sealed: { v: 2 } })).status, 400)
+  const noTable = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name = 'connector_credentials'`)
+  assert.deepEqual(noTable.rows.map((r) => r.column_name).sort(), ['connector_id', 'name', 'updated_at'], 'no column could hold a value')
+})
+
 test('[integration] authorization allows exactly the ad-hoc read path and names why it denies', async () => {
   const created = await call('POST', '/personal/connectors', { yaml: YAML, adhocRead: true })
   const id = (created.json.connector as { id: string }).id

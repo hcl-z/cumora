@@ -525,13 +525,16 @@ docker run --rm --network none --read-only --tmpfs /tmp:size=128m \
 
 ### 7.2 用户录入凭证时如何不经过 server
 
-1. daemon 启动时生成一对 ECDH P-256 密钥，私钥保存在数据卷里，公钥随心跳上报，存到 `computers.vault_public_key`（新列）。
-2. 前端用 WebCrypto 生成一个临时密钥对，与 daemon 的公钥做 ECDH，再用 HKDF-SHA256 派生出 AES-256-GCM 密钥，加密 `{ name, value }`。HKDF 的参数：salt 是 32 字节的 0，info 是 `cumora-vault-v1`。密文格式为 `{ v: 1, epk, iv, ct }`，前端实现见前端文档 5.3。
-3. 前端调用 `POST /api/connectors/:id/credentials`，提交密文。server 不保存密文，只通过设备级事件流（见 12.3）把 `vault.put` 事件转发给 daemon。
-4. daemon 解密后写入凭证库，然后回执。server 只记录凭证名和 `updated_at`，写入 `connector_credentials` 表。
-5. daemon 离线时，接口直接返回 409，提示"bot 主机离线，暂时不能保存凭证"。
+1. daemon 第一次打开凭证库时生成一对 ECDH P-256 密钥。私钥用主密钥加密后存在 vault 文件里。每次控制流连上时，daemon 通过 `POST /api/computers/me/vault-key` 上报公钥，存到 `computers.vault_public_key`（迁移 0013）。
+2. 前端调用 `GET /api/personal/vault-key` 取公钥，用 WebCrypto 生成一个临时密钥对，与 daemon 的公钥做 ECDH，再用 HKDF-SHA256 派生出 AES-256-GCM 密钥，加密 `{ connector, name, value }`。
+   - HKDF 的参数：salt 是 32 字节的 0，info 是 `cumora-vault-v1`。
+   - 密文格式为 `{ v: 1, epk, iv, ct }`，前端实现见 `src/lib/vault-seal.ts`。
+   - 加密内容里带上 `connector`，是为了让 daemon 能校验这份凭证确实是给这个连接器、这个名字的，server 没法拿去别处用。
+3. 前端调用 `POST /api/personal/connectors/:id/credentials`，提交密文。server 不保存密文，通过现有的设备级控制流 `GET /api/computers/me/control-stream` 把 `vault.put` 事件转发给 daemon。这条控制流按 computer 划分，经 Redis 广播；原计划在 12.3 新增一个 `/events` 接口，现在不再需要。
+4. daemon 解密后写入凭证库，然后调用 `POST /api/computers/me/vault-ack` 回执。回执按请求 id 暂存在 Redis 里，等待中的那个请求取到后返回给前端。只有请求发往的那台 computer 能回执。server 只记录凭证名和 `updated_at`，写入 `connector_credentials` 表。
+5. 以下情况接口直接返回 409，提示"bot 主机离线，暂时不能保存凭证"：daemon 离线，或者在线但控制流没有连上（Redis 发布时没有订阅者）。等了 10 秒还没收到回执则返回 504。
 
-另一个入口：在 daemon 所在的机器上直接运行 `cumora agent computer vault set <name>`（上线环境用 `docker compose exec daemon …`），从终端读取输入，不回显。
+另一个入口：在 daemon 所在的机器上直接运行 `cumora agent computer vault set <connector> <name>`（上线环境用 `docker compose exec daemon …`），从终端读取输入，不回显；也可以从管道读入。写完后 daemon 会通过 `POST /api/computers/me/vault-inventory` 上报凭证名，让 server 记录的列表保持一致。`vault list` 列出已存的凭证名。
 
 ### 7.3 脱敏
 

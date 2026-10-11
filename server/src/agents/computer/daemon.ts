@@ -41,7 +41,8 @@ import {
 import { parseSseStream, wakeStreamWasStable } from '../runtime/sse-parse.js'
 import { type ProviderProfile, providerProfileEnv, providerProfileFingerprint, providerProfileMetadata, readProviderProfiles, redactProviderSecret } from './provider-profiles.js'
 import { modelIdOrNull } from './model-id.js'
-import { parseComputerControlEvent } from './control-event.js'
+import { type ComputerControlEvent, parseComputerControlEvent } from './control-event.js'
+import { Vault, VaultError, defaultMasterKeySource } from '../../broker/vault.js'
 import {
   mergeWakeBackgroundBriefs,
   parseWakeData,
@@ -640,6 +641,118 @@ function brokerAllowsLoopbackHttp(): boolean {
     console.warn('[computer] CUMORA_BROKER_ALLOW_LOOPBACK_HTTP is on: connectors may call http://127.0.0.1 (tests only)')
   }
   return on
+}
+
+// ─── credential vault (docs/personal-bot/mvp-backend-design.md §7) ──────
+
+/** One vault per daemon process, shared by every agent's Broker. The file
+ *  lives beside computer.json, outside every agent home. */
+let vaultInstance: Vault | null = null
+function daemonVault(): Vault {
+  if (!vaultInstance) {
+    vaultInstance = new Vault(join(CONFIG_DIR, 'vault.enc.json'), defaultMasterKeySource(CONFIG_DIR))
+  }
+  return vaultInstance
+}
+
+/** Report the public key and the names the vault holds. Best-effort: a
+ *  server without personal mode answers 404 and nothing else changes. */
+async function reportVault(cfg: DaemonConfig): Promise<void> {
+  try {
+    const vault = daemonVault()
+    const auth = { Authorization: `Bearer ${cfg.deviceToken}` }
+    await api(cfg.serverUrl, '/api/computers/me/vault-key', { method: 'POST', headers: auth, body: JSON.stringify({ publicKey: vault.publicKeyJwk() }) })
+    await api(cfg.serverUrl, '/api/computers/me/vault-inventory', { method: 'POST', headers: auth, body: JSON.stringify({ entries: vault.list() }) })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (!/HTTP 404/.test(msg)) console.warn(`[computer] vault report failed: ${daemonVault().redactor.redact(msg).slice(0, 200)}`)
+  }
+}
+
+/** Apply one vault.put / vault.delete from the control stream and answer it.
+ *  Only the outcome goes back to the server, never the value. */
+async function handleVaultEvent(cfg: DaemonConfig, event: Extract<ComputerControlEvent, { kind: 'vault.put' | 'vault.delete' }>): Promise<void> {
+  let body: Record<string, unknown>
+  try {
+    const vault = daemonVault()
+    if (event.kind === 'vault.put') {
+      const value = vault.unseal(event.sealed, { connector: event.connector, name: event.name })
+      const info = vault.put(event.connector, event.name, value)
+      body = { requestId: event.requestId, ok: true, updatedAt: info.updatedAt }
+      console.log(`[computer] vault: stored ${event.connector}/${event.name}`)
+    } else {
+      vault.remove(event.connector, event.name)
+      body = { requestId: event.requestId, ok: true, updatedAt: new Date().toISOString() }
+      console.log(`[computer] vault: removed ${event.connector}/${event.name}`)
+    }
+  } catch (err) {
+    const error = err instanceof VaultError ? err.message : 'the vault could not store it'
+    console.warn(`[computer] vault: ${event.kind} ${event.connector}/${event.name} failed: ${error}`)
+    body = { requestId: event.requestId, ok: false, error }
+  }
+  await api(cfg.serverUrl, '/api/computers/me/vault-ack', {
+    method: 'POST', headers: { Authorization: `Bearer ${cfg.deviceToken}` }, body: JSON.stringify(body),
+  }).catch((err) => console.warn(`[computer] vault ack failed: ${err instanceof Error ? err.message : String(err)}`))
+}
+
+/** `cumora agent computer vault set <connector> <name>` / `vault list`, run on
+ *  the bot host itself. The value is read from the terminal without echo (or
+ *  from a pipe) and never passes through the server. */
+async function runVaultCommand(argv: string[]): Promise<void> {
+  const [sub, connector, name] = argv
+  const vault = daemonVault()
+  if (sub === 'list') {
+    const rows = vault.list()
+    if (!rows.length) console.log('the vault is empty')
+    for (const r of rows) console.log(`${r.connector}/${r.name}  updated ${r.updatedAt}`)
+    return
+  }
+  if (sub !== 'set' || !connector || !name) {
+    console.log('usage: cumora agent computer vault set <connector-id> <credential-name>\n       cumora agent computer vault list')
+    process.exitCode = 2
+    return
+  }
+  const value = await readSecret(`value for ${connector}/${name} (input hidden): `)
+  if (!value) { console.error('no value entered; nothing stored'); process.exitCode = 1; return }
+  vault.put(connector, name, value)
+  console.log(`stored ${connector}/${name} in ${vault.keyLabel === 'macOS keychain' ? 'the vault (master key in the macOS keychain)' : 'the vault'}`)
+  const cfg = await loadConfig()
+  if (cfg) {
+    await reportVault(cfg)
+    console.log('the bot host was told the credential is set (the value stays on this machine)')
+  }
+}
+
+/** Read one line without echoing it. Falls back to a plain read for pipes. */
+function readSecret(prompt: string): Promise<string> {
+  return new Promise((done) => {
+    const stdin = process.stdin
+    if (!stdin.isTTY) {
+      let buf = ''
+      stdin.setEncoding('utf8')
+      stdin.on('data', (c) => { buf += c })
+      stdin.on('end', () => done(buf.replace(/\r?\n$/, '')))
+      return
+    }
+    process.stdout.write(prompt)
+    stdin.setRawMode(true)
+    stdin.resume()
+    stdin.setEncoding('utf8')
+    let buf = ''
+    const onData = (chunk: string) => {
+      for (const ch of chunk) {
+        if (ch === '\r' || ch === '\n' || ch === '\u0004') {
+          stdin.setRawMode(false); stdin.pause(); stdin.off('data', onData)
+          process.stdout.write('\n')
+          return done(buf)
+        }
+        if (ch === '\u0003') { stdin.setRawMode(false); process.stdout.write('\n'); process.exit(130) }
+        if (ch === '\u007f' || ch === '\b') buf = buf.slice(0, -1)
+        else buf += ch
+      }
+    }
+    stdin.on('data', onData)
+  })
 }
 
 async function api<T>(serverUrl: string, path: string, init: RequestInit): Promise<T> {
@@ -2279,6 +2392,8 @@ export class AgentRunner {
       },
       currentRunId: () => this.currentRunId,
       allowLoopbackHttp: brokerAllowsLoopbackHttp(),
+      credential: (connector, name) => daemonVault().get(connector, name),
+      redact: (text) => daemonVault().redactor.redact(text),
     })
   }
 
@@ -3807,6 +3922,9 @@ async function doRun(serverOverride?: string): Promise<void> {
         if (!response.ok || !response.body) throw new Error(`computer control-stream HTTP ${response.status}`)
         connectedAt = Date.now()
         console.log('[computer] control-stream connected')
+        // The vault key and inventory ride on every (re)connect, so a server
+        // that lost them, or a host that just started, is current again.
+        void reportVault(cfg)
         for await (const event of parseSseStream(response.body as unknown as AsyncIterable<unknown>)) {
           if (shuttingDown) break
           if (event.event === 'ready') {
@@ -3815,9 +3933,10 @@ async function doRun(serverOverride?: string): Promise<void> {
             void heartbeat()
             continue
           }
-          if (event.event === 'engine.detect' && event.data && parseComputerControlEvent(event.data)) {
-            void rescanEngines(true)
-          }
+          const parsed = event.data ? parseComputerControlEvent(event.data) : null
+          if (!parsed) continue
+          if (parsed.kind === 'engine.detect') void rescanEngines(true)
+          else void handleVaultEvent(cfg, parsed)
         }
         if (!shuttingDown) console.warn(`[computer] control-stream closed by server · retry in ${backoff}ms`)
       } catch (error) {
@@ -4788,6 +4907,7 @@ async function runDoctor(providerId?: string): Promise<void> {
 // ─── entry ──────────────────────────────────────────────────────────────
 
 export async function runComputerDaemon(argv: string[]): Promise<void> {
+  if (argv[0] === 'vault') { await runVaultCommand(argv.slice(1)); return }
   const args = parseArgs(argv)
   if (args.provider !== undefined && !args.doctor) throw new Error('--provider requires --doctor')
   const serverUrl = (args.server || DEFAULT_SERVER).replace(/\/+$/, '')

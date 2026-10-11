@@ -57,6 +57,7 @@ import {
   personalOnboardingChecksum,
 } from './migrations/0011-personal-onboarding.js'
 import { CONNECTORS_SQL, connectorsChecksum } from './migrations/0012-connectors.js'
+import { CONNECTOR_CREDENTIALS_SQL, connectorCredentialsChecksum } from './migrations/0013-connector-credentials.js'
 
 /** Frozen data backfill embedded in migration 0001. Exported so its behavior
  * can be exercised against PostgreSQL without replaying the whole migration. */
@@ -2651,6 +2652,12 @@ const VERSIONED_MIGRATIONS: readonly VersionedMigration[] = [
     sourceChecksum: connectorsChecksum(),
     transactional: true,
     up: async (client) => { await client.query(CONNECTORS_SQL) },
+  },
+  {
+    ...SCHEMA_MIGRATIONS[12],
+    sourceChecksum: connectorCredentialsChecksum(),
+    transactional: true,
+    up: async (client) => { await client.query(CONNECTOR_CREDENTIALS_SQL) },
   },
 ]
 

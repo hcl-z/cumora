@@ -14,6 +14,7 @@ import { Broker, type BrokerEvent, argsHash } from '../broker/broker.js'
 import { type ConnectorDefinition, buildRequest, isPrivateAddress, splitActionName, validateArgs } from '../broker/definition.js'
 import { ConnectorCallError, RateLimiter, checkUrl, executeHttp } from '../broker/http-executor.js'
 import { ConnectorSchemaError, parseConnectorYaml } from '../personal/connector-schema.js'
+import { Redactor } from '../broker/vault.js'
 import { CUMORA_TOOL_NAME, loopToolDefs, runTool } from '../agents/computer/loop/tools.js'
 
 // ── address policy ────────────────────────────────────────────────────────
@@ -71,12 +72,29 @@ test('invalid definitions report every problem', () => {
   bad('id: abc\nbase_url: https://a.example\nactions: [{id: a, effect: read, method: POST, path: /a}]', /POST action cannot be marked read/)
   bad('id: abc\nbase_url: https://a.example\nactions: [{id: a, effect: read, path: "/a/{x}"}]', /\{x\} has no matching param/)
   bad('id: abc\nbase_url: https://a.example\nactions: [{id: a, effect: read, path: /../a}]', /path must start with/)
-  bad('id: abc\nbase_url: https://a.example\nauth: {type: header}\nactions: [{id: a, effect: read, path: /a}]', /auth is not supported yet/)
+  bad('id: abc\nbase_url: https://a.example\nauth: {type: header}\nactions: [{id: a, effect: read, path: /a}]', /auth\.credential must match/)
+  bad('id: abc\nbase_url: https://a.example\nauth: {type: header, name: Host, credential: k1}\nactions: [{id: a, effect: read, path: /a}]', /Host cannot be used/)
+  bad('id: abc\nbase_url: https://a.example\nauth: {type: cookie, credential: k1}\nactions: [{id: a, effect: read, path: /a}]', /auth\.type must be/)
+  bad('id: abc\nbase_url: https://a.example\nauth: {type: query, name: q, credential: k1}\nactions: [{id: a, effect: read, path: /a, params: {q: string}}]', /also a param of action a/)
   bad('id: abc\nbase_url: https://a.example\nactions: [{id: a, effect: read, path: /a}, {id: a, effect: read, path: /b}]', /duplicate action id a/)
   bad('{{not yaml', /YAML/)
   // The loopback switch admits exactly http://127.0.0.1, nothing else.
   assert.equal(parseConnectorYaml('id: abc\nbase_url: http://127.0.0.1:9\nactions: [{id: a, effect: read, path: /a}]', { allowLoopbackHttp: true }).baseUrl, 'http://127.0.0.1:9')
   bad('id: abc\nbase_url: http://10.0.0.1\nactions: [{id: a, effect: read, path: /a}]', /must use https/, { allowLoopbackHttp: true })
+})
+
+test('auth names a vault credential and places it after the args', () => {
+  const header = parseConnectorYaml('id: abc\nbase_url: https://a.example\nauth: {type: header, name: X-API-Key, credential: abc-key}\nactions: [{id: a, effect: read, path: /a, params: {x: string?}}]')
+  assert.deepEqual(header.auth, { type: 'header', name: 'X-API-Key', credential: 'abc-key' })
+  const r = buildRequest(header, header.actions[0], { x: '1' }, 'secret-value')
+  assert.equal(r.headers['X-API-Key'], 'secret-value')
+  assert.throws(() => buildRequest(header, header.actions[0], {}, null), /credential abc-key is not set/)
+
+  const bearer = parseConnectorYaml('id: abc\nbase_url: https://a.example\nauth: {type: bearer, credential: abc-key}\nactions: [{id: a, effect: read, path: /a}]')
+  assert.equal(buildRequest(bearer, bearer.actions[0], {}, 'tok-123').headers.Authorization, 'Bearer tok-123')
+
+  const query = parseConnectorYaml('id: abc\nbase_url: https://a.example\nauth: {type: query, name: apikey, credential: abc-key}\nactions: [{id: a, effect: read, path: /a, params: {x: string?}}]')
+  assert.equal(buildRequest(query, query.actions[0], { x: '1' }, 'qk-999').url.searchParams.get('apikey'), 'qk-999')
 })
 
 test('requests keep path params inside their segment and the base URL', () => {
@@ -234,6 +252,61 @@ test('args are validated against the authorized definition before the call', asy
   assert.match((await broker.call('fixture.echo', { id: 3 })).output, /param id must be string/)
   assert.match((await broker.call('nodot', {})).output, /<connector>\.<action>/)
   assert.equal(events.length, 0)
+})
+
+test('a credential is injected from the vault and redacted from everything that leaves the Broker', async () => {
+  const SECRET = 'sk-live-0123456789abcdef'
+  const events: BrokerEvent[] = []
+  const redactor = new Redactor()
+  redactor.set([{ name: 'quote-key', value: SECRET }])
+  const def: ConnectorDefinition = {
+    slug: 'quotes', kind: 'http', baseUrl: 'https://api.example.com', rateLimitPerMinute: 60,
+    auth: { type: 'header', name: 'X-API-Key', credential: 'quote-key' },
+    actions: [{ id: 'echo', effect: 'read', method: 'GET', path: '/echo', params: { note: { type: 'string', required: false } } }],
+  }
+  let sentHeaders: Record<string, string> = {}
+  const broker = new Broker({
+    fetchScope: async () => [],
+    authorize: async () => ({ decision: 'allow', definition: def, effect: 'read' }),
+    recordEvent: (e) => events.push(e),
+    currentRunId: () => 'run-1',
+    credential: (connector, name) => (connector === 'quotes' && name === 'quote-key' ? SECRET : null),
+    redact: (t) => redactor.redact(t),
+    // A misbehaving API that echoes the key back in its body.
+    execute: async (d, a, args, opts) => {
+      sentHeaders = buildRequest(d, a, args, opts.credential).headers
+      return { status: 200, contentType: 'application/json', body: Buffer.from(JSON.stringify({ youSent: SECRET, b64: Buffer.from(SECRET).toString('base64') })), durationMs: 3 }
+    },
+  })
+  // The model even passes the key as an arg.
+  const out = (await broker.call('quotes.echo', { note: `my key is ${SECRET}` })).output
+  assert.equal(sentHeaders['X-API-Key'], SECRET, 'the real value goes to the API')
+  assert.doesNotMatch(out, new RegExp(SECRET))
+  assert.match(out, /\[REDACTED:quote-key\]/)
+  const everything = JSON.stringify(events)
+  assert.doesNotMatch(everything, new RegExp(SECRET))
+  assert.doesNotMatch(everything, new RegExp(Buffer.from(SECRET).toString('base64')))
+
+  // An error that carries the key (e.g. a URL in a message) is redacted too.
+  const failing = new Broker({
+    fetchScope: async () => [], recordEvent: (e) => events.push(e), currentRunId: () => 'run-1',
+    authorize: async () => ({ decision: 'allow', definition: def, effect: 'read' }),
+    credential: () => SECRET, redact: (t) => redactor.redact(t),
+    execute: async () => { throw new Error(`connect failed for https://api.example.com/echo?k=${SECRET}`) },
+  })
+  const err = (await failing.call('quotes.echo', {})).output
+  assert.doesNotMatch(err + JSON.stringify(events), new RegExp(SECRET))
+
+  // A missing credential is a clear message, not a call without auth.
+  let called = false
+  const missing = new Broker({
+    fetchScope: async () => [], recordEvent: () => {}, currentRunId: () => null,
+    authorize: async () => ({ decision: 'allow', definition: def, effect: 'read' }),
+    credential: () => null,
+    execute: async () => { called = true; throw new Error('should not run') },
+  })
+  assert.match((await missing.call('quotes.echo', {})).output, /needs the credential quote-key, which is not set/)
+  assert.equal(called, false)
 })
 
 test('the loop offers connector tools only with a Broker, and routes them to it', async () => {

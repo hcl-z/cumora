@@ -6,7 +6,9 @@
  * confirmation come with T10; credentials with T09.
  */
 import { useEffect, useState } from 'react'
-import type { ApiConnector, ApiConnectorDetail, ApiConnectorStatus } from '@/api/client'
+import { type ApiConnector, type ApiConnectorDetail, type ApiConnectorStatus, ApiError, api } from '@/api/client'
+import { Input } from '@/components/Input'
+import { canSeal, sealCredential } from '@/lib/vault-seal'
 import { IBack, IPlus } from '@/components/icons'
 import { TextArea } from '@/components/TextArea'
 import { useT, type MessageKey } from '@/lib/i18n'
@@ -159,6 +161,87 @@ function CreateConnector({ onDone }: { onDone: () => void }) {
   )
 }
 
+/** Seal in the browser, relay through the server, store on the bot host.
+ *  The value lives only in this component's state and is cleared at once. */
+async function saveCredential(connector: ApiConnectorDetail, name: string, value: string): Promise<void> {
+  const key = await api.getVaultKey()
+  const sealed = await sealCredential(key.publicKey, { connector: connector.slug, name, value })
+  await api.putConnectorCredential(connector.id, { name, computerId: key.computerId, sealed })
+}
+
+function CredentialsSection({ connector }: { connector: ApiConnectorDetail }) {
+  const t = useT()
+  const refreshOne = useConnectors((s) => s.refreshOne)
+  const secure = canSeal()
+  return (
+    <Section title={t('connector.credentials')} eyebrow={t('connector.credentialsEyebrow')}>
+      <p className="text-[11.5px] leading-relaxed text-ink-500">{t('connector.credentialsHint')}</p>
+      {!secure && <ErrorNote>{t('connector.credentialNeedsHttps')}</ErrorNote>}
+      <ul className="mt-3 divide-y divide-ink-100">
+        {connector.credentials.map((c) => (
+          <CredentialRow key={c.name} connector={connector} name={c.name} updatedAt={c.updatedAt} disabled={!secure} onSaved={() => void refreshOne(connector.id)} />
+        ))}
+      </ul>
+    </Section>
+  )
+}
+
+function CredentialRow({ connector, name, updatedAt, disabled, onSaved }: {
+  connector: ApiConnectorDetail; name: string; updatedAt: string | null; disabled: boolean; onSaved: () => void
+}) {
+  const t = useT()
+  const [value, setValue] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+  const inputId = `cred-${connector.id}-${name}`
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!value || busy) return
+    setBusy(true); setError(null); setSaved(false)
+    try {
+      await saveCredential(connector, name, value)
+      setValue('')
+      setSaved(true)
+      onSaved()
+    } catch (err) {
+      setValue('')
+      setError(err instanceof ApiError && err.status === 409 ? t('connector.credentialHostOffline') : err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <li className="py-3">
+      <form onSubmit={(e) => void submit(e)} className="flex flex-wrap items-end gap-2">
+        <div className="min-w-[200px] flex-1">
+          <label htmlFor={inputId} className="flex items-center gap-2 text-[12px] font-semibold text-ink-800">
+            <span className="font-mono">{name}</span>
+            <Pill tone={updatedAt ? 'good' : 'warn'}>{updatedAt ? t('connector.credentialSet') : t('connector.credentialMissing')}</Pill>
+          </label>
+          <Input
+            id={inputId}
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={updatedAt ? t('connector.credentialReplace') : t('connector.credentialPlaceholder')}
+            disabled={disabled || busy}
+            className="mt-1.5"
+          />
+          {updatedAt && <p className="mt-1 text-[10.5px] text-ink-400">{t('connector.credentialUpdated', { time: new Date(updatedAt).toLocaleString() })}</p>}
+        </div>
+        <Button type="submit" tone="primary" disabled={disabled || busy || !value}>{busy ? t('connector.credentialSaving') : t('connector.credentialSave')}</Button>
+      </form>
+      <div aria-live="polite">
+        {error && <ErrorNote>{error}</ErrorNote>}
+        {saved && <p className="mt-2 text-[11px] text-emerald-700">{t('connector.credentialSaved')}</p>}
+      </div>
+    </li>
+  )
+}
+
 function ConnectorDetail({ connector }: { connector: ApiConnectorDetail }) {
   const t = useT()
   const update = useConnectors((s) => s.update)
@@ -209,6 +292,8 @@ function ConnectorDetail({ connector }: { connector: ApiConnectorDetail }) {
           ))}
         </ul>
       </Section>
+
+      {connector.credentials.length > 0 && <CredentialsSection connector={connector} />}
 
       <Section title={t('connector.definition')}>
         <pre className="max-h-96 overflow-auto rounded-xl bg-paper p-3 font-mono text-[11.5px] leading-relaxed text-ink-800">{connector.definitionYaml}</pre>

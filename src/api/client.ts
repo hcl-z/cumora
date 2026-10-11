@@ -844,6 +844,9 @@ export interface ApiConnector {
 
 export interface ApiConnectorDetail extends ApiConnector {
   definitionYaml: string
+  /** Credentials the connector needs; `updatedAt` null = not set yet. The
+   *  value never reaches the server: it is sealed for the bot host's vault. */
+  credentials: Array<{ name: string; updatedAt: string | null }>
 }
 
 export const api = {
@@ -899,6 +902,11 @@ export const api = {
     http<{ connector: ApiConnectorDetail; replayed: boolean }>('/personal/connectors', { method: 'POST', body: JSON.stringify(input) }),
   updateConnector: (id: string, input: { status?: ApiConnectorStatus; adhocRead?: boolean }) =>
     http<{ connector: ApiConnectorDetail }>(`/personal/connectors/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
+  getVaultKey: () => http<{ computerId: string; online: boolean; publicKey: import('@/lib/vault-seal').EcPublicJwk }>('/personal/vault-key'),
+  putConnectorCredential: (id: string, input: { name: string; computerId: string; sealed: import('@/lib/vault-seal').SealedCredential }) =>
+    http<{ name: string; updatedAt: string }>(`/personal/connectors/${encodeURIComponent(id)}/credentials`, { method: 'POST', body: JSON.stringify(input) }),
+  deleteConnectorCredential: (id: string, name: string) =>
+    http<{ ok: boolean }>(`/personal/connectors/${encodeURIComponent(id)}/credentials/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   getShippingOverview: () => http<ShippingOverview>('/shipping/overview'),
   getShippingFeature: (id: string) => http<ShippingFeatureDetail>(`/shipping/features/${encodeURIComponent(id)}`),
   createShippingFeature: (input: {

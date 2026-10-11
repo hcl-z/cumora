@@ -29,6 +29,11 @@ export interface BrokerDeps {
   recordEvent(event: BrokerEvent): void
   currentRunId(): string | null
   allowLoopbackHttp?: boolean
+  /** The vault value for a connector's credential, or null if unset. */
+  credential?: (connector: string, name: string) => string | null
+  /** Replace every known credential value with `[REDACTED:<name>]`. Applied
+   *  to every result, error and run event before it leaves the Broker. */
+  redact?: (text: string) => string
   /** Test seam: replaces the real HTTP call. */
   execute?: (def: ConnectorDefinition, action: ConnectorAction, args: Record<string, unknown>, opts: ExecuteOptions) => Promise<HttpResult>
   now?: () => number
@@ -133,14 +138,26 @@ export class Broker {
       return { output: `error: rate limit for ${def.slug} (${def.rateLimitPerMinute}/min) reached; wait before calling it again` }
     }
 
+    let credential: string | null = null
+    if (def.auth) {
+      try {
+        credential = this.deps.credential?.(def.slug, def.auth.credential) ?? null
+      } catch {
+        return { output: `error: credential ${def.auth.credential} for ${def.slug} could not be read from this computer's vault` }
+      }
+      if (!credential) {
+        return { output: `error: ${def.slug} needs the credential ${def.auth.credential}, which is not set on this computer. Ask the user to add it in the console.` }
+      }
+    }
+
     const execute = this.deps.execute ?? executeHttp
     let result: HttpResult
     try {
-      result = await execute(def, spec, args, { allowLoopbackHttp: this.deps.allowLoopbackHttp })
+      result = await execute(def, spec, args, { allowLoopbackHttp: this.deps.allowLoopbackHttp, credential })
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = this.redact(err instanceof Error ? err.message : String(err))
       const reason = err instanceof ConnectorCallError ? err.reason : 'network'
-      this.deps.recordEvent({
+      this.record({
         kind: 'connector.call', level: 'warn', title: `${action} failed`,
         data: { action, effect: spec.effect, argsHash: hash, error: message, reason },
       })
@@ -149,7 +166,8 @@ export class Broker {
 
     const evidenceId = `ev_${++this.evidenceCount}`
     const fetchedAt = new Date(this.now()).toISOString()
-    const text = result.body.toString('utf8')
+    // Some APIs echo the key back; nothing past this line sees it.
+    const text = this.redact(result.body.toString('utf8'))
     let data: unknown = text
     if (/json/i.test(result.contentType ?? '') || /^[[{]/.test(text.trim())) {
       try { data = JSON.parse(text) } catch { /* keep text */ }
@@ -157,7 +175,7 @@ export class Broker {
     let serialized = typeof data === 'string' ? data : JSON.stringify(data)
     const { text: kept, cut } = cutUtf8(serialized, RESULT_DATA_BYTES)
     serialized = kept
-    this.deps.recordEvent({
+    this.record({
       kind: 'connector.call', level: result.status >= 400 ? 'warn' : 'info', title: `${action} → ${result.status}`,
       data: {
         action, effect: spec.effect, argsHash: hash, args: cut ? undefined : args,
@@ -165,13 +183,22 @@ export class Broker {
       },
     })
     return {
-      output: JSON.stringify({
+      output: this.redact(JSON.stringify({
         evidence_id: evidenceId,
         source: { connector: def.slug, action: spec.id, fetched_at: fetchedAt },
         untrusted: true,
         status: result.status,
         ...(cut ? { truncated: true, data_text: serialized } : { data }),
-      }),
+      })),
     }
+  }
+
+  private redact(text: string): string {
+    return this.deps.redact ? this.deps.redact(text) : text
+  }
+
+  /** Every run event goes through redaction, including the model's args. */
+  private record(event: BrokerEvent): void {
+    this.deps.recordEvent(JSON.parse(this.redact(JSON.stringify(event))) as BrokerEvent)
   }
 }

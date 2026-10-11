@@ -56,16 +56,18 @@ import {
   setComputerDefaultEngine, updateEngineDefaults, getEngineDefaults,
   rotateCompanyPairingCode, PAIRABLE_ENGINES, type EngineId,
 } from '../agents/computer/registry.js'
-import { attachComputerControlStream, deliverEngineDetect } from '../agents/computer/control-bus.js'
+import { attachComputerControlStream, deliverEngineDetect, recordVaultAck, requestVault } from '../agents/computer/control-bus.js'
 import { companyTier } from '../tier.js'
 import { createShippingRouter } from './shipping-router.js'
 import {
   findIdempotentCreate, IdempotencyConflictError,
   parseRequestId, requestHash,
 } from '../idempotent-create.js'
+import type { SealedCredential } from '../broker/vault.js'
 import { ConnectorSchemaError } from '../personal/connector-schema.js'
 import {
-  ConnectorConflictError, createConnector, getConnector, listConnectors, updateConnector,
+  ConnectorConflictError, connectorCredentialTarget, createConnector, getConnector, listConnectors,
+  recordCredential, syncVaultInventory, updateConnector, workspaceVaultHost,
 } from '../personal/connectors.js'
 
 /** Re-export so older imports (server/index.ts, agents/cli.ts) keep working
@@ -1041,6 +1043,66 @@ api.patch('/personal/connectors/:id', safe(async (req, res) => {
   res.json({ connector })
 }))
 
+// ─── credentials: sealed in the browser, opened only by the daemon (§7.2) ─
+
+const HOST_OFFLINE = 'the bot host is offline; credentials can only be saved while it is connected'
+
+/** The daemon's ECDH public key the browser seals a credential to. */
+api.get('/personal/vault-key', safe(async (req, res) => {
+  requirePersonalMode()
+  const { companyId } = await requireCompany(req)
+  const host = await workspaceVaultHost(companyId)
+  if (!host) throw new HttpError(409, 'no bot host is paired yet')
+  if (!host.publicKey) throw new HttpError(409, 'the bot host has not reported a vault key yet; update and restart the daemon')
+  res.json({ computerId: host.computerId, online: host.online, publicKey: host.publicKey })
+}))
+
+/** Relay a sealed credential to the daemon. The body is a ciphertext only the
+ *  daemon can open; it is passed through and never stored or logged. */
+api.post('/personal/connectors/:id/credentials', safe(async (req, res) => {
+  requirePersonalMode()
+  const { companyId } = await requireCompany(req)
+  const name = typeof req.body?.name === 'string' ? req.body.name : ''
+  const sealed = req.body?.sealed as Record<string, unknown> | undefined
+  if (!name) throw new HttpError(400, 'name is required')
+  if (!sealed || sealed.v !== 1 || typeof sealed.epk !== 'object' || sealed.epk === null
+    || typeof sealed.iv !== 'string' || typeof sealed.ct !== 'string' || sealed.ct.length > 64 * 1024) {
+    throw new HttpError(400, 'sealed must be a v1 sealed credential')
+  }
+  const target = await connectorCredentialTarget(companyId, String(req.params.id), name)
+  if (!target) throw new HttpError(404, 'this connector does not use a credential with that name')
+  const host = await workspaceVaultHost(companyId)
+  if (!host?.online || !host.publicKey) throw new HttpError(409, HOST_OFFLINE)
+  if (typeof req.body?.computerId === 'string' && req.body.computerId !== host.computerId) {
+    throw new HttpError(409, 'the bot host changed since the key was fetched; reload and try again')
+  }
+  const out = await requestVault(host.computerId, {
+    kind: 'vault.put', connector: target.slug, name,
+    sealed: { v: 1, epk: sealed.epk as SealedCredential['epk'], iv: sealed.iv, ct: sealed.ct },
+  })
+  if (out.status === 'offline') throw new HttpError(409, HOST_OFFLINE)
+  if (out.status === 'timeout') throw new HttpError(504, 'the bot host did not confirm in time; try again')
+  if (out.status === 'failed') throw new HttpError(422, out.error)
+  await recordCredential(companyId, String(req.params.id), name, out.updatedAt)
+  res.json({ name, updatedAt: out.updatedAt })
+}))
+
+api.delete('/personal/connectors/:id/credentials/:name', safe(async (req, res) => {
+  requirePersonalMode()
+  const { companyId } = await requireCompany(req)
+  const name = String(req.params.name)
+  const target = await connectorCredentialTarget(companyId, String(req.params.id), name)
+  if (!target) throw new HttpError(404, 'this connector does not use a credential with that name')
+  const host = await workspaceVaultHost(companyId)
+  if (!host?.online) throw new HttpError(409, HOST_OFFLINE)
+  const out = await requestVault(host.computerId, { kind: 'vault.delete', connector: target.slug, name })
+  if (out.status === 'offline') throw new HttpError(409, HOST_OFFLINE)
+  if (out.status === 'timeout') throw new HttpError(504, 'the bot host did not confirm in time; try again')
+  if (out.status === 'failed') throw new HttpError(422, out.error)
+  await recordCredential(companyId, String(req.params.id), name, null)
+  res.json({ ok: true })
+}))
+
 api.post('/auth/logout', safe(async (req, res) => {
   const auth = req.headers.authorization
   let token: string | undefined
@@ -1538,6 +1600,51 @@ api.get('/computers/me/control-stream', safe(async (req, res) => {
   await attachComputerControlStream(computerId, res, {
     authorize: async () => (await resolveDevice(token))?.computerId === computerId,
   })
+}))
+
+// ─── daemon vault (personal mode, docs/personal-bot/mvp-backend-design.md §7) ─
+
+/** The daemon reports the ECDH public key browsers seal credentials to. */
+api.post('/computers/me/vault-key', safe(async (req, res) => {
+  const { computerId } = await requireDevice(req)
+  const jwk = req.body?.publicKey as Record<string, unknown> | undefined
+  if (!jwk || jwk.kty !== 'EC' || jwk.crv !== 'P-256' || typeof jwk.x !== 'string' || typeof jwk.y !== 'string' || 'd' in jwk) {
+    throw new HttpError(400, 'publicKey must be a public P-256 JWK')
+  }
+  await pool.query(
+    `UPDATE computers SET vault_public_key = $2::jsonb WHERE id = $1 AND revoked_at IS NULL`,
+    [computerId, JSON.stringify({ kty: 'EC', crv: 'P-256', x: jwk.x, y: jwk.y })],
+  )
+  res.json({ ok: true })
+}))
+
+/** The daemon's answer to a vault.put / vault.delete it was sent. */
+api.post('/computers/me/vault-ack', safe(async (req, res) => {
+  const { computerId } = await requireDevice(req)
+  const requestId = typeof req.body?.requestId === 'string' ? req.body.requestId : ''
+  if (!requestId) throw new HttpError(400, 'requestId is required')
+  const ack = req.body?.ok === true && typeof req.body?.updatedAt === 'string'
+    ? { ok: true as const, updatedAt: req.body.updatedAt as string }
+    : { ok: false as const, error: (typeof req.body?.error === 'string' ? req.body.error : 'the bot host could not store it').slice(0, 300) }
+  if (!(await recordVaultAck(computerId, requestId, ack))) throw new HttpError(404, 'no such pending vault request for this computer')
+  res.json({ ok: true })
+}))
+
+/** The daemon reports which credentials its vault holds (names only), e.g.
+ *  after `cumora agent computer vault set` on the host. */
+api.post('/computers/me/vault-inventory', safe(async (req, res) => {
+  const { computerId, companyId } = await requireDevice(req)
+  if (!env.PERSONAL_MODE) throw new HttpError(404, 'the vault is a personal-mode feature')
+  const raw = Array.isArray(req.body?.entries) ? req.body.entries as unknown[] : null
+  if (!raw || raw.length > 500) throw new HttpError(400, 'entries must be a list')
+  const entries = raw.flatMap((e) => {
+    const r = e as Record<string, unknown>
+    return typeof r?.connector === 'string' && typeof r.name === 'string' && typeof r.updatedAt === 'string'
+      ? [{ connector: r.connector, name: r.name, updatedAt: r.updatedAt }] : []
+  })
+  const host = await workspaceVaultHost(companyId)
+  if (host?.computerId !== computerId) throw new HttpError(403, 'only the workspace bot host reports the vault')
+  res.json({ ok: true, recorded: await syncVaultInventory(companyId, entries) })
 }))
 
 // Agents assigned to the calling computer (daemon discovery on boot).

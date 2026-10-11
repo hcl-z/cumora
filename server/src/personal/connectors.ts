@@ -45,8 +45,18 @@ export interface ConnectorDto {
   actions: ConnectorActionDto[]
 }
 
+export interface ConnectorCredentialDto {
+  /** The name the definition's `auth.credential` refers to. */
+  name: string
+  /** When the daemon last stored it, or null when it is not set yet. */
+  updatedAt: string | null
+}
+
 export interface ConnectorDetailDto extends ConnectorDto {
   definitionYaml: string
+  /** The credentials this connector needs and whether each is set. Values
+   *  never leave the daemon's vault; the server only knows names. */
+  credentials: ConnectorCredentialDto[]
 }
 
 interface ConnectorRow {
@@ -125,7 +135,87 @@ export async function getConnector(companyId: string, id: string): Promise<Conne
     [companyId, id],
   )
   if (!rows[0]) return null
-  return { ...toDto(rows[0], await loadActions(pool, [id])), definitionYaml: rows[0].definition_yaml }
+  const stored = await pool.query<{ name: string; updated_at: Date }>(
+    `SELECT name, updated_at FROM connector_credentials WHERE connector_id = $1`,
+    [id],
+  )
+  const needed = rows[0].definition.auth ? [rows[0].definition.auth.credential] : []
+  const credentials = needed.map((name) => {
+    const hit = stored.rows.find((r) => r.name === name)
+    return { name, updatedAt: hit ? hit.updated_at.toISOString() : null }
+  })
+  return { ...toDto(rows[0], await loadActions(pool, [id])), definitionYaml: rows[0].definition_yaml, credentials }
+}
+
+// ── credentials (names only; values live in the daemon's vault) ────────
+
+/** The computer that hosts this workspace's bots, with its vault key. In
+ *  personal mode there is exactly one. */
+export async function workspaceVaultHost(companyId: string): Promise<{
+  computerId: string; online: boolean; publicKey: Record<string, unknown> | null
+} | null> {
+  const { rows } = await pool.query<{ id: string; status: string; vault_public_key: Record<string, unknown> | null }>(
+    `SELECT id, status, vault_public_key FROM computers
+      WHERE company_id = $1 AND revoked_at IS NULL AND kind <> 'cloud'
+      ORDER BY paired_at NULLS LAST, created_at LIMIT 1`,
+    [companyId],
+  )
+  const r = rows[0]
+  return r ? { computerId: r.id, online: r.status === 'online' || r.status === 'busy', publicKey: r.vault_public_key } : null
+}
+
+/** The connector a credential belongs to, if the definition really asks for it. */
+export async function connectorCredentialTarget(companyId: string, connectorId: string, name: string): Promise<{ slug: string } | null> {
+  const { rows } = await pool.query<{ slug: string; definition: ConnectorDefinition }>(
+    `SELECT slug, definition FROM connectors WHERE company_id = $1 AND id = $2`,
+    [companyId, connectorId],
+  )
+  const r = rows[0]
+  if (!r || r.definition.auth?.credential !== name) return null
+  return { slug: r.slug }
+}
+
+export async function recordCredential(companyId: string, connectorId: string, name: string, updatedAt: string | null): Promise<void> {
+  await withOutboxTransaction(async (client) => {
+    if (updatedAt) {
+      await client.query(
+        `INSERT INTO connector_credentials (connector_id, name, updated_at) VALUES ($1, $2, $3)
+         ON CONFLICT (connector_id, name) DO UPDATE SET updated_at = EXCLUDED.updated_at`,
+        [connectorId, name, updatedAt],
+      )
+    } else {
+      await client.query(`DELETE FROM connector_credentials WHERE connector_id = $1 AND name = $2`, [connectorId, name])
+    }
+    await enqueueBroadcast(client, CH_CONNECTORS, {
+      type: 'connector.changed', kind: 'connector.updated', companyId, connectorId,
+    })
+  })
+}
+
+/** Replace the workspace's credential bookkeeping with what the daemon's
+ *  vault actually holds (`vault set` on the host, or a daemon restart).
+ *  Entries for connectors this workspace does not have are ignored. */
+export async function syncVaultInventory(companyId: string, entries: Array<{ connector: string; name: string; updatedAt: string }>): Promise<number> {
+  return withOutboxTransaction(async (client) => {
+    const { rows } = await client.query<{ id: string; slug: string }>(`SELECT id, slug FROM connectors WHERE company_id = $1`, [companyId])
+    const bySlug = new Map(rows.map((r) => [r.slug, r.id]))
+    await client.query(`DELETE FROM connector_credentials WHERE connector_id = ANY($1::text[])`, [rows.map((r) => r.id)])
+    let kept = 0
+    for (const e of entries) {
+      const id = bySlug.get(e.connector)
+      if (!id) continue
+      await client.query(
+        `INSERT INTO connector_credentials (connector_id, name, updated_at) VALUES ($1, $2, $3)
+         ON CONFLICT (connector_id, name) DO UPDATE SET updated_at = EXCLUDED.updated_at`,
+        [id, e.name, e.updatedAt],
+      )
+      kept++
+    }
+    for (const r of rows) {
+      await enqueueBroadcast(client, CH_CONNECTORS, { type: 'connector.changed', kind: 'connector.updated', companyId, connectorId: r.id })
+    }
+    return kept
+  })
 }
 
 export class ConnectorConflictError extends Error {

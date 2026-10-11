@@ -9,8 +9,9 @@
  */
 import yaml from 'js-yaml'
 import {
-  ACTION_ID_RE, type ConnectorAction, type ConnectorDefinition, DEFAULT_RATE_LIMIT_PER_MINUTE,
-  HTTP_METHODS, type HttpMethod, PARAM_NAME_RE, type ParamSpec, type ParamType, SAFE_METHODS, SLUG_RE, pathParams,
+  ACTION_ID_RE, CREDENTIAL_NAME_RE, type ConnectorAction, type ConnectorAuth, type ConnectorDefinition, DEFAULT_RATE_LIMIT_PER_MINUTE,
+  FORBIDDEN_AUTH_HEADERS, HEADER_NAME_RE, HTTP_METHODS, type HttpMethod, PARAM_NAME_RE, type ParamSpec, type ParamType,
+  SAFE_METHODS, SLUG_RE, pathParams,
 } from '../broker/definition.js'
 
 export const MAX_CONNECTOR_YAML_BYTES = 64 * 1024
@@ -90,6 +91,33 @@ function parseAction(raw: unknown, index: number, problems: string[]): Connector
   return { id, effect, method, path, params, ...(str(r.description) ? { description: str(r.description)! } : {}) }
 }
 
+/** `auth: { type: header, name: X-API-Key, credential: market-data-key }`,
+ *  `{ type: bearer, credential: … }` or `{ type: query, name: apikey, credential: … }`.
+ *  Only the credential's name lives here; the value stays in the daemon's vault. */
+function parseAuth(raw: unknown, problems: string[]): ConnectorAuth | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (typeof raw !== 'object' || Array.isArray(raw)) { problems.push('auth must be a map'); return undefined }
+  const a = raw as Record<string, unknown>
+  const credential = str(a.credential)
+  if (!credential || !CREDENTIAL_NAME_RE.test(credential)) {
+    problems.push(`auth.credential must match ${CREDENTIAL_NAME_RE}`)
+    return undefined
+  }
+  if (a.type === 'bearer') return { type: 'bearer', credential }
+  const name = str(a.name)
+  if (a.type === 'header') {
+    if (!name || !HEADER_NAME_RE.test(name)) { problems.push('auth.name must be a header name'); return undefined }
+    if (FORBIDDEN_AUTH_HEADERS.has(name.toLowerCase())) { problems.push(`auth.name ${name} cannot be used for a credential`); return undefined }
+    return { type: 'header', name, credential }
+  }
+  if (a.type === 'query') {
+    if (!name || !PARAM_NAME_RE.test(name)) { problems.push('auth.name must be a query parameter name'); return undefined }
+    return { type: 'query', name, credential }
+  }
+  problems.push('auth.type must be header, bearer or query')
+  return undefined
+}
+
 function checkBaseUrl(raw: string | null, opts: ParseOptions, problems: string[]): string | null {
   if (!raw) { problems.push('base_url is required'); return null }
   let url: URL
@@ -119,7 +147,7 @@ export function parseConnectorYaml(source: string, opts: ParseOptions = {}): Con
   if (!slug || !SLUG_RE.test(slug)) problems.push(`id must match ${SLUG_RE}`)
   const kind = str(r.kind) ?? 'http'
   if (kind !== 'http') problems.push(`kind ${kind} is not supported yet (only http)`)
-  if (r.auth !== undefined && r.auth !== null) problems.push('auth is not supported yet: connectors that need credentials arrive with the credential vault')
+  const auth = parseAuth(r.auth, problems)
   const baseUrl = checkBaseUrl(str(r.base_url), opts, problems)
 
   let rateLimitPerMinute = DEFAULT_RATE_LIMIT_PER_MINUTE
@@ -143,9 +171,15 @@ export function parseConnectorYaml(source: string, opts: ParseOptions = {}): Con
     })
   }
 
+  if (auth?.type === 'query') {
+    const clash = actions.find((a) => a.params[auth.name])
+    if (clash) problems.push(`auth query parameter ${auth.name} is also a param of action ${clash.id}`)
+  }
+
   if (problems.length) throw new ConnectorSchemaError(problems)
   return {
     slug: slug!, kind: 'http', baseUrl: baseUrl!, rateLimitPerMinute, actions,
+    ...(auth ? { auth } : {}),
     ...(str(r.name) ? { name: str(r.name)! } : {}),
     ...(str(r.description) ? { description: str(r.description)! } : {}),
   }

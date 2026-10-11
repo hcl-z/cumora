@@ -77,6 +77,61 @@ export async function deliverEngineDetect(computerId: string): Promise<number> {
   return redis.publish(CH_COMPUTER_CONTROL_PREFIX + computerId, JSON.stringify(event))
 }
 
+// ── vault requests (docs/personal-bot/mvp-backend-design.md §7.2) ────────
+//
+// A vault request is relayed to the daemon over its control stream and the
+// daemon answers through POST /api/computers/me/vault-ack. The answer is
+// parked in Redis under the request id, so the API process holding the
+// browser's request sees it whichever process the daemon reached. Only the
+// outcome is stored there, never the sealed blob or a value.
+
+const VAULT_PENDING_PREFIX = 'cumora:vault-pending:'
+const VAULT_ACK_PREFIX = 'cumora:vault-ack:'
+const VAULT_TTL_SECONDS = 60
+
+export type VaultAck = { ok: true; updatedAt: string } | { ok: false; error: string }
+type VaultRequest =
+  | { kind: 'vault.put'; connector: string; name: string; sealed: import('../../broker/vault.js').SealedCredential }
+  | { kind: 'vault.delete'; connector: string; name: string }
+
+/** Relay one vault request and wait for the daemon's answer. `offline` means
+ *  no daemon stream is connected to receive it. */
+export async function requestVault(
+  computerId: string,
+  request: VaultRequest,
+  timeoutMs = 10_000,
+): Promise<{ status: 'ok'; updatedAt: string } | { status: 'failed'; error: string } | { status: 'offline' } | { status: 'timeout' }> {
+  const requestId = randomUUID()
+  await redis.set(VAULT_PENDING_PREFIX + requestId, computerId, 'EX', VAULT_TTL_SECONDS)
+  const event = { ...request, id: `${request.kind}-${requestId}`, at: Date.now(), requestId } as ComputerControlEvent
+  const receivers = await redis.publish(CH_COMPUTER_CONTROL_PREFIX + computerId, JSON.stringify(event))
+  if (receivers === 0) {
+    await redis.del(VAULT_PENDING_PREFIX + requestId)
+    return { status: 'offline' }
+  }
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const raw = await redis.get(VAULT_ACK_PREFIX + requestId)
+    if (raw) {
+      await redis.del(VAULT_ACK_PREFIX + requestId, VAULT_PENDING_PREFIX + requestId)
+      const ack = JSON.parse(raw) as VaultAck
+      return ack.ok ? { status: 'ok', updatedAt: ack.updatedAt } : { status: 'failed', error: ack.error }
+    }
+    await new Promise((done) => setTimeout(done, 150))
+  }
+  await redis.del(VAULT_PENDING_PREFIX + requestId)
+  return { status: 'timeout' }
+}
+
+/** Record the daemon's answer. Only the computer the request was sent to
+ *  may answer it; false otherwise (or when it already expired). */
+export async function recordVaultAck(computerId: string, requestId: string, ack: VaultAck): Promise<boolean> {
+  const target = await redis.get(VAULT_PENDING_PREFIX + requestId)
+  if (target !== computerId) return false
+  await redis.set(VAULT_ACK_PREFIX + requestId, JSON.stringify(ack), 'EX', VAULT_TTL_SECONDS)
+  return true
+}
+
 /** Attach the authenticated daemon's long-lived SSE control stream. */
 export async function attachComputerControlStream(
   computerId: string,
