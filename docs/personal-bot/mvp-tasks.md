@@ -133,7 +133,7 @@ flowchart LR
 
 ## 阶段二：连接器（第 3–4 周）
 
-### T08 HTTP 连接器，做通最小链路 · AFK · L
+### T08 HTTP 连接器，做通最小链路 · AFK · L ✅
 
 做什么：用户粘贴一份 YAML，接入一个不需要鉴权的 HTTP 连接器，并开启"临时任务可读"。之后在总群里让 Chief 调用这个连接器的读动作，能拿到带证据编号的结果。
 
@@ -146,8 +146,8 @@ flowchart LR
 - 前端：工作台外壳（只有连接器 tab，列表加只读详情）、Rail 入口、移动端"我"页面的入口，以及 `components/console/ui.tsx` 里的基础组件。
 
 验收：
-- [ ] 产品计划 A4 的最小版本：在总群里提问，Chief 调用读动作后作答，审计里能看到这次调用（`server/src/__e2e__/connector.e2e.ts`：Chief 读到 fixture 服务的报价，结果编号为 `ev_1`，回复里引用了 `[ev_1]`，`agent_events` 里有对应的 `connector.call`）。⏸ 本机没有 Redis，这条在 CI 里验证。
-- [ ] B2：调用不在授权范围内的动作，会被拒绝并写进审计。同一个 e2e 用例里，Chief 先尝试调用写动作，被拒绝后由服务端写入 `connector.denied`；fixture 服务没有收到这次请求。集成测试 `personal-connectors.test.ts` 覆盖了 authorize 的全部拒绝分支（草稿、写动作、未知动作、未知连接器、名字不合法、跨工作区、没开临时任务可读），本地在 Postgres 上通过。⏸ e2e 部分在 CI 里验证。
+- [x] 产品计划 A4 的最小版本：在总群里提问，Chief 调用读动作后作答，审计里能看到这次调用（`server/src/__e2e__/connector.e2e.ts`：Chief 读到 fixture 服务的报价，结果编号为 `ev_1`，回复里引用了 `[ev_1]`，`agent_events` 里有对应的 `connector.call`）。在 CI 运行 38132717587 中通过，e2e 2 个用例都执行了，没有跳过。模型用的是回放，真实模型要等 T06。
+- [x] B2：调用不在授权范围内的动作，会被拒绝并写进审计。同一个 e2e 用例里，Chief 先尝试调用写动作，被拒绝后由服务端写入 `connector.denied`；fixture 服务没有收到这次请求。集成测试 `personal-connectors.test.ts` 覆盖了 authorize 的全部拒绝分支（草稿、写动作、未知动作、未知连接器、名字不合法、跨工作区、没开临时任务可读），在本地 Postgres 和 CI 上都通过（集成测试 448 个，0 失败）。
 - [x] 请求私网地址、http 明文地址、响应超过 2MB，都会被拒绝，有对应测试（`broker.test.ts`）：私网 IP 字面量和本地主机名在建立连接前就会拒绝；公网域名解析到私网地址的情况，在 socket 自己的 lookup 里拦截，所以检查的地址就是实际连接的地址（防 DNS rebinding）；超过 2MB 的响应会被中途切断；超时和限流也都有测试。重定向不跟随。
 - [x] 新增的 WS 事件 `connector.changed` 同步改了 4 处：`ws.ts` 的订阅列表、`client.ts` 的 `WsEvent`、`api-contract.json`、事件带 `companyId`。`api-contract` 测试通过。
 - 实现说明：
