@@ -1,0 +1,23 @@
+docs/personal-bot/mvp-tasks.md
+  s_3e98741f3cf33e::t_022ece6d32ee81 220-252
+  s_3e98741f3cf33e::t_af1cfe89446162 186
+  s_3e98741f3cf33e::t_cb17d174b53719 504
+  s_3e98741f3cf33e::t_e36df249349392 22-23
+  s_3e98741f3cf33e::t_b5c3c06e3fae67 519
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "e29653d34ed3504acc0fa1e00ce2afeebf1099a1",
+  "prompts": {},
+  "sessions": {
+    "s_3e98741f3cf33e": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_td31b0v6fr5f",
+        "model": "kr-claude-opus-5.5"
+      },
+      "human_author": "hcl-z <1401859664@qq.com>"
+    }
+  }
+}
