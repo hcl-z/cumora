@@ -56,7 +56,7 @@ CUMORA_PERSONAL_BOOTSTRAP_TOKEN="$(grep ^PERSONAL_BOOTSTRAP_TOKEN= .env | cut -d
 
 With no `~/.cumora/computer.json` it pairs itself, waiting and retrying every 15 seconds if you have not signed in yet, and every bot without a computer moves onto it. The secret only works for the workspace's first computer: once one is paired the endpoint answers 410, and re-pairing uses that computer's reconnect code like any Cumora computer. It is never sent to a server you did not name with `--server` or `CUMORA_SERVER_URL`.
 
-In this task the Chief runs on whichever local engine the daemon picks (Claude Code by default). The built-in `loop` engine replaces that in T04.
+The Chief runs on the built-in `loop` engine: no CLI to install, but the daemon itself needs `OPENAI_API_KEY` in its environment (add it next to the bootstrap token above). Without it the Computers tab lists `loop` as blocked with that reason. `CUMORA_DEFAULT_LOOP_MODEL` overrides the default `gpt-5.5`, and `OPENAI_BASE_URL` points it at a compatible endpoint. `./bin/cumora agent computer --doctor` checks both model tiers.
 
 ## Tests
 

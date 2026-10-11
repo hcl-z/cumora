@@ -130,6 +130,11 @@ export const ENGINE_VERSION_SPECS: Record<string, EngineVersionSpec> = {
   zcode: {
     versionArgs: ['--version'],
   },
+  // Built into the daemon and versioned with it. It is never given a binary
+  // path, so probeEngineVersion returns an empty result without spawning.
+  loop: {
+    versionArgs: [],
+  },
   hermes: {
     versionArgs: ['version'],
     selfUpdate: 'hermes update',

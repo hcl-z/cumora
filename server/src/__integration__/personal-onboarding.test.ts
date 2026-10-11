@@ -106,7 +106,9 @@ test('[integration] bootstrap pairing waits for the owner, pairs once, then refu
     [COMPANY],
   )
   assert.equal(chief.rows[0]?.computer_id, paired.computerId)
-  assert.equal(chief.rows[0]?.engine, 'claude')
+  // Pairing keeps the Chief on the built-in engine rather than the
+  // computer's default CLI engine.
+  assert.equal(chief.rows[0]?.engine, 'loop')
 
   const again = await bootstrapPair({ hostName: 'dev-mac', engines: ['claude'] })
   assert.equal(again.status, 'already_paired')

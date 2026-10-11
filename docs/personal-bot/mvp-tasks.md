@@ -77,16 +77,17 @@ flowchart LR
 
 依赖：T02。
 
-### T04 loop 引擎 v0：能在群里对话 · AFK · M
+### T04 loop 引擎 v0：能在群里对话 · AFK · M ⏸
 
 做什么：新增 `loop` 引擎并在所有注册表中登记，接上 OpenAI Responses 的流式调用。工具只开放 `cumora`、`read_file`、`write_file`、`edit_file`、`set_turn_status` 这几个。Chief 的默认引擎改成 `loop`。
 
 验收：
-- [ ] `guard:engine-registry` 通过，`EngineId` 的 3 处定义、`LlmCallSource`、`TriageSource` 都已更新。
-- [ ] Chief 用 `loop` 在总群里回复，能执行 `cumora reply`、`cumora calendar create` 等命令。
-- [ ] 文件工具不能访问 home 以外的路径，也不能通过符号链接逃出 home，有对应的测试。
-- [ ] `--doctor` 能探测主力模型和辅助模型两档。
-- [ ] 每个 hop 都写入 `llm_calls`，`guard:llm-tracked` 通过。
+- [x] `guard:engine-registry` 通过，`EngineId` 的 3 处定义、`LlmCallSource`、`TriageSource` 都已更新。另外新增 `IN_PROCESS_ENGINE_IDS` 类别：`loop` 没有二进制，所以不走 PATH 检测、版本门槛和 doctor 的 PATH 查找；daemon 有 `OPENAI_API_KEY` 时才算可运行，否则在 Computers 页显示原因。
+- [x] Chief 用 `loop`：初始化时 engine 设为 `loop`，配对时保留。会话单元测试用脚本化的流驱动，验证了调用 Cumora 工具（argv 原样转发，HELD 的 exit 2 交回给模型）、只有终态才结束回合、插话在 hop 边界送达、hop 上限。⏸ 在总群里真的 @Chief 收到回复，需要 Redis、正在运行的 daemon 和真实的 key，留到 T06 一起验。
+- [x] 文件工具不能访问 home 以外的路径，也不能通过符号链接逃出 home：对最近一层已存在的祖先目录做 realpath 再检查，读和写都覆盖了，`loop-tools.test.ts` 有对应测试。
+- [x] `--doctor` 能探测主力模型和辅助模型两档：`probe` 按档位各发一次最小请求；`probeWake` 标为 skipped，因为唤醒路径就是同一个进程内调用。⏸ 真实探测需要 key。
+- [x] 每个 hop 都通过 `onHopUsage` 写进 `llm_calls`（来源记为 `byoa-loop`）。OpenAI 的 usage 换算成 ledger 的字段：未命中缓存的 input 加 cache read。`guard:llm-tracked` 和 `guard:big-brain` 都通过。
+- 实现说明：直接用 `fetch` 调 Responses API，自己写了一个小的 SSE 解析器，没有引入 `openai` SDK（只用到它的类型）。这样 agent-cli 的单文件包仍然是 409KB。`LoopAdapter` 写在 `engine.ts` 里，因为放在单独文件会和 `ADAPTERS` 形成运行时的循环依赖。8KB 输出截断提前在这里做了（原计划在 T05）。
 
 依赖：T03。
 

@@ -285,33 +285,30 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS calendar_events_capability_idx
 
 | 改动 | 位置 |
 |---|---|
-| `EngineId` 增加 `'loop'` | 三处保持同步：`server/src/agents/computer/engine.ts:384`、`server/src/agents/computer/registry.ts:29`、`src/types.ts:10` |
-| `ENGINE_IDS` 和 `SANDBOXED_ENGINE_IDS` 增加 `'loop'`，并放在第一位作为默认 | `engine.ts:387`、`engine.ts:393`。loop 自己执行工具边界，属于安全引擎 |
-| `ADAPTERS` 注册 `loop: new LoopAdapter()` | `engine.ts:5785` |
-| 引擎探测：`loop` 没有二进制，`detectEnginesWithStatus` 对它直接返回 `installed`；`--doctor` 改为探测 OpenAI 连通性 | `engine.ts:5811` |
-| `EngineSessionArgs` 新增可选字段 `runtimeCli(argv, signal)`，由 `AgentRunner` 传入自己的 `invokeRuntimeCli` | `engine.ts:759`、`daemon.ts:2259`（`startSession` 调用处）、`daemon.ts:2179` |
-| `EngineSessionArgs` 新增可选字段 `broker`，即当前 bot 的 Broker 实例（见第 6 节） | 同上 |
-| 账本来源增加 `'byoa-loop'` | `LlmCallSource`（`llm-ledger.ts:78`）和 `TriageSource`（`observability.ts:7`）。不加的话，未知来源会被静默记成 `byoa-claude` |
+| `EngineId` 增加 `'loop'` | 三处保持同步：`server/src/agents/computer/engine.ts`、`server/src/agents/computer/registry.ts`、`src/types.ts` |
+| `ENGINE_IDS` 和 `SANDBOXED_ENGINE_IDS` 增加 `'loop'`。放在 `ENGINE_IDS` 的最后一位，不放第一位：daemon 上报的第一个引擎就是这台 computer 的默认引擎，放第一位会让上游所有 BYOA 用户的默认引擎都变成 `loop`。个人模式的 Chief 在初始化时直接把 engine 写成 `loop`，配对时会保留 | `engine.ts`。loop 不执行任何模型生成的命令，算作安全引擎 |
+| 新增 `IN_PROCESS_ENGINE_IDS` 类别（目前只有 `loop`）：不走 PATH 检测、版本门槛和 doctor 的 PATH 查找；daemon 设置了 `OPENAI_API_KEY` 才算可运行，否则以 blocked 显示原因（`inProcessEngineBlockedReason`）。前端的 `ENGINE_BIN` 和 registry 的 `ENGINE_BINS` 里，`loop` 的值是空字符串 | `engine.ts`、`registry.ts`、`src/lib/engines.ts`、`cli-version.ts`（空的版本规格）、`model-catalog.ts`（预设模型 `gpt-5.5` / `gpt-5.4-mini`） |
+| `ADAPTERS` 注册 `loop: new LoopAdapter()`。`LoopAdapter` 写在 `engine.ts` 里：它要用 engine.ts 私有的 `ensureCommonHome`、`atomicAgentWrite`、`PERSONA_HEADER`，单独成文件会和 `ADAPTERS` 形成运行时循环依赖 | `engine.ts` |
+| `EngineSessionArgs` 和 `EngineRunArgs` 新增可选字段 `runtimeCli(argv, signal)`，由 `AgentRunner` 传入自己的 `invokeRuntimeCli`。和文件 IPC broker 走的是同一个 daemon 调用，只是省掉了 IPC 这一跳 | `engine.ts`、`daemon.ts`（`startSession` 和两处 `adapter.run`） |
+| `EngineSessionArgs` 新增可选字段 `broker`，即当前 bot 的 Broker 实例（见第 6 节） | T08 再加 |
+| 账本来源增加 `'byoa-loop'` | `BYOA_SOURCES`、`LlmCallSource`、`TriageSource`、admin 和 client 的联合类型。不加的话，未知来源会被静默记成 `byoa-claude` |
 | 注册表一致性 | 以上所有枚举必须同时改，否则 `npm run guard:engine-registry` 会失败（`CONTRIBUTING.md:108-111`） |
 
 代码目录：`server/src/agents/computer/loop/`
 
 ```
 loop/
-  adapter.ts        LoopAdapter：seedHome / startSession / run / classify / probe / probeWake
-  session.ts        LoopSession：实现 EngineSession（send / steer / alive / stop）
-  agent-loop.ts     循环骨架（参考 pi-agent-core 的 agent-loop 设计）
-  provider/
-    openai.ts       Responses API 流式调用，复用 turn-stream.ts
-    types.ts        统一的 Message / ToolCall / Usage 类型，为 P1 接其他厂商预留
-  tools/
-    cumora.ts       cumora(argv)：和现有 MCP cli 工具同一套 schema（daemon.ts:1245）
-    fs.ts           read_file / write_file / edit_file，限定在 bot 的 home 目录内
-    turn-status.ts  set_turn_status
-    connector.ts    connector_list / connector_describe / connector_call，转给 Broker
-  history-store.ts  会话历史的持久化与恢复
-  verify.ts         完成复核（移植 turn.ts:1181 verifyTerminalCompletion）
+  responses.ts      Responses API 流式调用：fetch 加一个小的 SSE 解析器，错误按 EngineFailure 分类
+  session.ts        LoopSession：实现 EngineSession（send / steer / alive / stop），hop 循环
+  tools.ts          工具定义和执行：mcp__cumora__cli（argv 原样转发），以及限定在 home 内的 read/write/edit_file、set_turn_status
+  （T05）history-store.ts  会话历史的持久化与恢复
+  （T05）verify.ts         完成复核（移植 turn.ts:1181 verifyTerminalCompletion）
+  （T08）connector.ts      connector_list / connector_describe / connector_call，转给 Broker
 ```
+
+不用 `openai` SDK：daemon 以单文件包发布（agent-cli），SDK 会占掉包的大部分体积。这里只引用它的类型，构建时会被擦除；流事件仍然交给 `turn-stream.ts` 的 reducer 处理。加上 loop 之后，包大小是 409KB。
+
+工具名叫 `mcp__cumora__cli`，和安全模式的 CLI 引擎看到的名字一样，所以 standing prompt 不用为 loop 单独写一份。
 
 ### 5.2 一个回合的执行流程
 

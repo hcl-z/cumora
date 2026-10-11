@@ -33,6 +33,10 @@ import { stripLoneSurrogates } from '../text-safety.js'
 import { isCustomAnthropicEndpoint, readClaudeUserSettings, withClaudeUserSettingsEnv } from './claude-user-settings.js'
 import { isCliVersionAtLeast, probeEngineVersion, probeLocalEngineVersionWithRetry, versionCommandInvocation } from './cli-version.js'
 import { discoverEngineModelCatalog, type EngineModelCatalog } from './model-catalog.js'
+import { applyResponseStreamEvent, consumeResponseStream, newResponseStreamState } from '../turn-stream.js'
+import { createResponsesStreamer, responsesConfigFromEnv } from './loop/responses.js'
+import { LoopSession, engineUsageFromOpenAI } from './loop/session.js'
+import type { RuntimeCliInvoker } from './loop/tools.js'
 
 const IS_WIN = process.platform === 'win32'
 
@@ -381,16 +385,34 @@ function resolveCodexSpawn(): CodexSpawn {
   return { command: node, argsPrefix: [script], shell: false, wantsStdinPrompt: false }
 }
 
-export type EngineId = 'claude' | 'codex' | 'grok' | 'cursor' | 'opencode' | 'pi' | 'gemini' | 'qwen' | 'antigravity' | 'zcode'
+export type EngineId = 'claude' | 'codex' | 'grok' | 'cursor' | 'opencode' | 'pi' | 'gemini' | 'qwen' | 'antigravity' | 'zcode' | 'loop'
 
-/** The pairable engine ids, in the daemon's default detection order. */
-export const ENGINE_IDS: EngineId[] = ['claude', 'codex', 'grok', 'cursor', 'opencode', 'pi', 'gemini', 'qwen', 'antigravity', 'zcode']
+/** The pairable engine ids, in the daemon's default detection order. `loop`
+ *  sits last so a machine that has a CLI engine keeps it as its default. */
+export const ENGINE_IDS: EngineId[] = ['claude', 'codex', 'grok', 'cursor', 'opencode', 'pi', 'gemini', 'qwen', 'antigravity', 'zcode', 'loop']
 
 /** Engines for which Cumora can impose a fail-closed filesystem + tool-network
  * boundary non-interactively. The remaining adapters still work for operators
  * who explicitly accept host-level execution, but are never selected merely
- * because their binary happens to be on PATH. */
-export const SANDBOXED_ENGINE_IDS: readonly EngineId[] = ['claude', 'codex']
+ * because their binary happens to be on PATH. `loop` qualifies because it runs
+ * no model-generated commands at all: its only tools are home-confined file
+ * access and the argv-only Cumora bridge. */
+export const SANDBOXED_ENGINE_IDS: readonly EngineId[] = ['claude', 'codex', 'loop']
+
+/** Engines that run inside the daemon process instead of spawning a CLI.
+ *  They have no binary, so PATH detection, version gates and doctor's PATH
+ *  lookup do not apply; they are runnable when their provider key is set. */
+export const IN_PROCESS_ENGINE_IDS: readonly EngineId[] = ['loop']
+
+export function isInProcessEngine(id: EngineId): boolean {
+  return IN_PROCESS_ENGINE_IDS.includes(id)
+}
+
+/** Why an in-process engine cannot run in this environment, or null. */
+export function inProcessEngineBlockedReason(id: EngineId, env: NodeJS.ProcessEnv): string | null {
+  if (id === 'loop' && !(env.OPENAI_API_KEY ?? '').trim()) return 'OPENAI_API_KEY is not set for the daemon'
+  return null
+}
 export const ALLOW_UNSANDBOXED_BYOA_ENV = 'CUMORA_BYOA_ALLOW_UNSANDBOXED'
 export const SECURE_ENGINE_MIN_VERSIONS: Readonly<Partial<Record<EngineId, string>>> = {
   // --restricted first shipped here; it is what ignores user/project settings
@@ -480,8 +502,18 @@ export async function evaluateRunnableEngines(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
 ): Promise<RunnableEngineEvaluation> {
-  const candidates = runnableEngineIds(installed, env, platform)
-  if (allowUnsandboxedByoa(env)) return { runnable: candidates, blocked: [] }
+  const allCandidates = runnableEngineIds(installed, env, platform)
+  // In-process engines have no binary to version-gate; their only
+  // precondition is a provider key, checked the same way in either mode.
+  const inProcessRunnable: EngineId[] = []
+  const inProcessBlocked: RunnableEngineEvaluation['blocked'] = []
+  for (const id of allCandidates.filter(isInProcessEngine)) {
+    const reason = inProcessEngineBlockedReason(id, env)
+    if (reason) inProcessBlocked.push({ id, reason, state: 'confirmed-incompatible' })
+    else inProcessRunnable.push(id)
+  }
+  const candidates = allCandidates.filter((id) => !isInProcessEngine(id))
+  if (allowUnsandboxedByoa(env)) return { runnable: [...candidates, ...inProcessRunnable], blocked: inProcessBlocked }
 
   const snapshot = await snapshotDetectedEngines(candidates)
   const probes = new Map(await Promise.all(snapshot.map(async (entry) => {
@@ -518,7 +550,11 @@ export async function evaluateRunnableEngines(
     runnable.push(id)
     if (probe?.temporarilyUnverifiable) temporarilyUnverifiable.push(id)
   }
-  return { runnable, blocked, temporarilyUnverifiable }
+  return {
+    runnable: [...runnable, ...inProcessRunnable],
+    blocked: [...blocked, ...inProcessBlocked],
+    temporarilyUnverifiable,
+  }
 }
 
 export interface EnginePersona {
@@ -557,6 +593,9 @@ export interface EngineRunArgs {
   onHopUsage?: (report: EngineHopReport) => void
   /** Aborts the run (daemon shutdown / future mid-run steering). */
   signal: AbortSignal
+  /** In-process engines reach Cumora through this instead of the MCP shim.
+   *  CLI engines ignore it. */
+  runtimeCli?: RuntimeCliInvoker
 }
 
 /** Raw token usage as engines report it (Anthropic/Claude Code field names).
@@ -771,6 +810,9 @@ export interface EngineSessionArgs {
    *  transcript stays small enough for native auto-compaction to keep up. Whether a
    *  session actually carried it is reported by EngineSession.carriesStandingPrompt. */
   standingPrompt?: string | null
+  /** In-process engines reach Cumora through this instead of the MCP shim.
+   *  CLI engines ignore it. */
+  runtimeCli?: RuntimeCliInvoker
   onLog: (line: string) => void
   /** Fire-and-forget per-hop trajectory report. Called once per assistant
    *  message (Claude) / per turn-completed event (Codex) with that hop's own
@@ -5782,6 +5824,94 @@ class AntigravityAdapter implements EngineAdapter {
 }
 
 
+/** Big-brain default for `loop`, matching the server's OPENAI_MODEL default.
+ *  CUMORA_DEFAULT_LOOP_MODEL overrides it per deployment (registry.ts). */
+export const LOOP_DEFAULT_MODEL = 'gpt-5.5'
+/** Small-brain default for triage and the doctor's small tier. */
+export const LOOP_DEFAULT_FAST_MODEL = 'gpt-5.4-mini'
+
+/** One tool-free completion, for triage and doctor probes. */
+async function loopOneShot(
+  env: NodeJS.ProcessEnv,
+  model: string,
+  prompt: string,
+  signal: AbortSignal,
+): Promise<EngineClassifyResult> {
+  const config = responsesConfigFromEnv(env)
+  if (!config) return { text: '', error: 'OPENAI_API_KEY is not set for the daemon (api key missing)', model }
+  const state = newResponseStreamState()
+  try {
+    await consumeResponseStream(
+      createResponsesStreamer(config)({ model, input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }] }], maxOutputTokens: 800 }, signal),
+      (event) => applyResponseStreamEvent(state, event),
+    )
+  } catch (err) {
+    return { text: '', error: err instanceof Error ? err.message : String(err), model }
+  }
+  return {
+    text: Array.from(state.responseTextByPart.values()).join('\n').trim(),
+    usage: engineUsageFromOpenAI(state.responseUsage),
+    model,
+  }
+}
+
+/** The built-in engine: a hop loop in the daemon process against the OpenAI
+ *  Responses API (loop/session.ts). No CLI to install; needs OPENAI_API_KEY. */
+class LoopAdapter implements EngineAdapter {
+  readonly id = 'loop' as const
+  readonly bin = ''
+
+  async seedHome(home: string, persona: EnginePersona): Promise<void> {
+    await ensureCommonHome(home)
+    await atomicAgentWrite(join(home, 'AGENTS.md'), PERSONA_HEADER(persona, { personaFile: 'AGENTS.md', skillsDir: '.agents/skills/' }))
+  }
+
+  private session(args: {
+    home: string; env: NodeJS.ProcessEnv; model?: string | null; instructions: string
+    runtimeCli?: RuntimeCliInvoker; onLog: (line: string) => void; onHopUsage?: (r: EngineHopReport) => void
+  }): LoopSession {
+    return new LoopSession({
+      home: realpathSync(args.home),
+      model: args.model || LOOP_DEFAULT_MODEL,
+      instructions: args.instructions,
+      config: responsesConfigFromEnv(args.env),
+      runtimeCli: args.runtimeCli ?? null,
+      onLog: args.onLog,
+      onHopUsage: args.onHopUsage,
+    })
+  }
+
+  startSession(args: EngineSessionArgs): EngineSession {
+    return this.session({ ...args, instructions: args.standingPrompt ?? '' })
+  }
+
+  async run(args: EngineRunArgs): Promise<EngineRunResult> {
+    // The one-shot path inlines the standing prompt into `prompt` itself.
+    const session = this.session({ ...args, instructions: '' })
+    const onAbort = () => { void session.stop() }
+    args.signal.addEventListener('abort', onAbort, { once: true })
+    try { return await session.send(args.prompt) }
+    finally {
+      args.signal.removeEventListener('abort', onAbort)
+      await session.stop()
+    }
+  }
+
+  classify(args: EngineClassifyArgs): Promise<EngineClassifyResult> {
+    return loopOneShot(args.env, args.model || LOOP_DEFAULT_FAST_MODEL, args.prompt, args.signal)
+  }
+
+  probe(args: EngineProbeArgs): Promise<EngineClassifyResult> {
+    const model = args.tier === 'big' ? (args.env.CUMORA_DEFAULT_LOOP_MODEL?.trim() || LOOP_DEFAULT_MODEL) : LOOP_DEFAULT_FAST_MODEL
+    return loopOneShot(args.env, model, 'Reply with exactly: ok', args.signal)
+  }
+
+  async probeWake(_args: EngineWakeProbeArgs): Promise<EngineWakeProbeResult> {
+    // The wake path is the same in-process call the brain probes already made.
+    return { ok: true, detail: '', skipped: true }
+  }
+}
+
 const ADAPTERS: Record<EngineId, EngineAdapter> = {
   claude: new ClaudeAdapter(),
   codex: new CodexAdapter(),
@@ -5793,6 +5923,7 @@ const ADAPTERS: Record<EngineId, EngineAdapter> = {
   qwen: new QwenAdapter(),
   antigravity: new AntigravityAdapter(),
   zcode: new ZcodeAdapter(),
+  loop: new LoopAdapter(),
 }
 
 export function getAdapter(id: EngineId): EngineAdapter {
@@ -5811,6 +5942,7 @@ export interface EngineDetection {
 export async function detectEnginesWithStatus(): Promise<EngineDetection> {
   const ids = Object.keys(ADAPTERS) as EngineId[]
   const probes = await Promise.all(ids.map(async (id) => {
+    if (isInProcessEngine(id)) return { id, installed: true, status: 'present' as BinPathProbe }
     const status = await probeBinOnPath(ADAPTERS[id].bin)
     const installed = status === 'present' || (id === 'grok' && resolveGrokBin() != null)
     return { id, installed, status }
@@ -5853,6 +5985,7 @@ export async function snapshotDetectedEngines(ids?: readonly EngineId[]): Promis
   const present = ids ?? await detectEngines()
   return Promise.all(present.map(async (id) => {
     const bin = ADAPTERS[id].bin
+    if (isInProcessEngine(id)) return { id, bin, path: null }
     const path = id === 'grok'
       ? (resolveGrokBin() ?? await resolveBinPath(bin))
       : await resolveBinPath(bin)
@@ -5983,7 +6116,9 @@ export async function runEngineDoctor(opts?: {
   const ids = opts?.engines ?? Object.keys(ADAPTERS) as EngineId[]
   return Promise.all(ids.map(async (id): Promise<EngineHealth> => {
     const adapter = ADAPTERS[id]
-    const path = (await resolveBinPath(adapter.bin)) ?? (id === 'grok' ? resolveGrokBin(env) : null)
+    const path = isInProcessEngine(id)
+      ? '(in-process)'
+      : (await resolveBinPath(adapter.bin)) ?? (id === 'grok' ? resolveGrokBin(env) : null)
     if (!path) return { id, installed: false, path: null, big: null, small: null, wake: null }
     const probeTier = async (tier: 'big' | 'small'): Promise<BrainHealth> => {
       const controller = new AbortController()

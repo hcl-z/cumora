@@ -50,7 +50,7 @@ import {
 import { SKYPE_EMOTICONS_GUIDE } from '../skype-emoticons.js'
 import { finalizeTriage, isRateLimited, parseTriage } from '../triage-core.js'
 import { type ActionSurface, actionSurfaceFor, actionSurfaceText, calendarExampleText, postingMechanicsText } from './prompt-surface.js'
-import { allowUnsandboxedByoa, detectEnginesWithStatus, ENGINE_IDS, engineFailureOf, type DetectedEngineSnapshot, type EngineHopReport, type EngineId, type EngineRunResult, type EngineSession, type EngineUsage, enrichDetectedEngines, evaluateRunnableEngines, getAdapter, runEngineDoctor, type RunnableEngineEvaluation, snapshotDetectedEngines } from './engine.js'
+import { LOOP_DEFAULT_FAST_MODEL, allowUnsandboxedByoa, detectEnginesWithStatus, ENGINE_IDS, engineFailureOf, type DetectedEngineSnapshot, type EngineHopReport, type EngineId, type EngineRunResult, type EngineSession, type EngineUsage, enrichDetectedEngines, evaluateRunnableEngines, getAdapter, runEngineDoctor, type RunnableEngineEvaluation, snapshotDetectedEngines } from './engine.js'
 import { EngineSessionStore, sessionIdPreview } from './session-store.js'
 import { runWithSessionRecovery } from './session-recovery.js'
 
@@ -803,6 +803,9 @@ export function authFailureHint(engine: EngineId, detail: string): string {
   }
   if (!/(auth|login|token|quota|credit|billing|subscription|rate limit|usage limit|api key)/i.test(detail)) {
     return 'Check the daemon terminal for details, then wake the agent again.'
+  }
+  if (engine === 'loop') {
+    return 'Set OPENAI_API_KEY (a key with quota) in the daemon environment on that computer, restart the daemon, then wake the agent again.'
   }
   if (engine === 'claude') {
     return 'Open Claude Code on that computer and sign in, refresh quota, or add credits, then wake the agent again.'
@@ -2040,6 +2043,7 @@ export class AgentRunner {
           onLog: (line) => this.logEngineLine(line),
           onHopUsage: (r) => this.onEngineHop(r, 'agent-turn'),
           signal: this.teardown.signal,
+          runtimeCli: this.runtimeCliInvoker,
         }))
       }
     } else {
@@ -2053,6 +2057,7 @@ export class AgentRunner {
         onLog: (line) => this.logEngineLine(line),
         onHopUsage: (r) => this.onEngineHop(r, 'agent-turn'),
         signal: this.teardown.signal,
+        runtimeCli: this.runtimeCliInvoker,
       }))
     }
     if (result.sessionId) this.setSessionId(result.sessionId)
@@ -2201,6 +2206,12 @@ export class AgentRunner {
     this.tokenExpiresAt = 0
   }
 
+  /** The in-process engines' route to Cumora: the same daemon-owned call the
+   *  file-IPC broker makes, minus the IPC hop. The model still supplies only
+   *  argv; identity and credentials stay here. */
+  private readonly runtimeCliInvoker = (argv: string[], signal: AbortSignal): Promise<RuntimeCliBrokerResult> =>
+    this.invokeRuntimeCli(argv, signal)
+
   /** Execute one shim request outside the model's sandbox. The broker accepts
    *  only argv strings; identity, URL, Authorization, redirects, and token
    *  refresh remain daemon-owned and cannot be changed by the model. */
@@ -2297,6 +2308,7 @@ export class AgentRunner {
       // 'agent-turn' for ALL session-issued hops; triage / agenda / etc. ride
       // their own purpose-tagged paths (see recordTriageUsage etc.).
       onHopUsage: (r) => this.onEngineHop(r, 'agent-turn'),
+      runtimeCli: this.runtimeCliInvoker,
     })
     if (this.engineSession) {
       console.log(`[computer] ${this.agent.id} engine session ${this.sessionId ? `respawned (resume ${this.sessionId.slice(0, 8)})` : 'spawned fresh'} — persistent, no per-wake cold start`)
@@ -2521,6 +2533,7 @@ export class AgentRunner {
     if (this.adapter.id === 'claude') return 'haiku'
     if (this.adapter.id === 'grok') return 'grok-4.5'
     if (this.adapter.id === 'codex') return 'gpt-5.4-mini'
+    if (this.adapter.id === 'loop') return LOOP_DEFAULT_FAST_MODEL
     if (this.adapter.id === 'gemini') return 'gemini-2.5-flash-lite'
     if (this.adapter.id === 'qwen') return 'qwen3-coder-flash'
     if (this.adapter.id === 'opencode') return this.agent.model ?? '<opencode-default>'

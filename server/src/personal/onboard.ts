@@ -84,9 +84,11 @@ export async function onboardPersonal(companyId: string): Promise<PersonalOnboar
       // so the Chief gets a random suffix rather than a bare "chief".
       chiefId = `chief-${randomUUID().slice(0, 8)}`
       await client.query(
+        // The Chief runs on the built-in loop engine; pairing keeps it (only an
+        // unset or 'managed' engine is replaced by the computer's default).
         `INSERT INTO participants (id, kind, name, role, initial, avatar_bg, status, bio, tools,
-                                   system_prompt, company_id)
-         VALUES ($1, 'agent', $2, $3, 'C', $4, 'avail', $5, $6::jsonb, $7, $8)`,
+                                   system_prompt, company_id, engine)
+         VALUES ($1, 'agent', $2, $3, 'C', $4, 'avail', $5, $6::jsonb, $7, $8, 'loop')`,
         [
           chiefId, CHIEF_NAME, '幕僚长', 'linear-gradient(135deg, #3FB6A8, #1F7A70)',
           'Your chief of staff. Tell me what you need and I will get it done or tell you what is missing.',

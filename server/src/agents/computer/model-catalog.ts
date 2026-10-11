@@ -134,6 +134,18 @@ const PRESETS: Record<EngineId, EngineModelCatalog> = {
     fastModelScope: 'agent',
     source: 'presets',
   },
+  loop: {
+    // The built-in engine calls the OpenAI Responses API with the daemon's key.
+    models: [
+      { id: 'gpt-5.5', label: 'GPT-5.5', recommendedFor: ['big'] },
+      { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', recommendedFor: ['small'] },
+    ],
+    defaultModel: 'gpt-5.5',
+    defaultFastModel: 'gpt-5.4-mini',
+    supportsCustom: true,
+    fastModelScope: 'agent',
+    source: 'presets',
+  },
 }
 
 const MODEL_PROBE_TIMEOUT_MS = 10_000
