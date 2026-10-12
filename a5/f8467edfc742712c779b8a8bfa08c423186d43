@@ -1,0 +1,82 @@
+docs/personal-bot/mvp-tasks.md
+  s_3e98741f3cf33e::t_f1ede55cdb5648 194,199-218
+server/src/broker/broker.ts
+  s_3e98741f3cf33e::t_86d41de7b3d3c5 61-92
+  s_3e98741f3cf33e::t_4c3b5b2852a067 13-15
+src/locales/en.ts
+  s_3e98741f3cf33e::t_5ab61e1c21c7db 1145,1151,1179-1217
+server/src/agents/computer/control-bus.ts
+  s_3e98741f3cf33e::t_2366b44fa4a9c1 150
+  s_3e98741f3cf33e::t_96b0892d376349 92-97,101-107,115-135
+server/src/__e2e__/connector-wizard.e2e.ts
+  s_3e98741f3cf33e::t_565ea915757331 1-116
+server/src/__tests__/connector-onboarding.test.ts
+  s_3e98741f3cf33e::t_aa2b331f9f0b76 1-157
+server/src/api/router.ts
+  s_3e98741f3cf33e::t_5659023152784b 1129-1130
+  s_3e98741f3cf33e::t_1330ccfa6ada11 59-61,68-69,73-74,76
+  s_3e98741f3cf33e::t_b78b20ac601cf1 1715-1725,1727
+  s_3e98741f3cf33e::t_cf6ebf0de39075 1007-1008,1010,1012-1013,1017-1108
+server/src/personal/openapi-import.ts
+  s_3e98741f3cf33e::t_95030a2324de57 203
+  s_3e98741f3cf33e::t_ef18c2206b5aab 1-202,204-238
+server/src/personal/connectors.ts
+  s_3e98741f3cf33e::t_b95563dee9491e 276-278
+  s_3e98741f3cf33e::t_9a0dbad5ff7b1a 299-308
+  s_3e98741f3cf33e::t_9e4b5b3aabf8c0 226-230,232-239,247,251-256
+  s_3e98741f3cf33e::t_2672343a65775e 326-410
+  s_3e98741f3cf33e::t_1b5b36b00eecd0 13,15-16
+server/src/broker/definition.ts
+  s_3e98741f3cf33e::t_9b7fae301ec550 116-138
+server/src/agents/computer/daemon.ts
+  s_3e98741f3cf33e::t_973b5123d4bd0e 56,3957
+  s_3e98741f3cf33e::t_42f84dfbe5a37b 698-715
+server/src/agents/computer/control-event.ts
+  s_3e98741f3cf33e::t_2939dc5cf402be 2,11-13,16,23-28
+docs/personal-bot/mvp-backend-design.md
+  s_3e98741f3cf33e::t_49b93092291194 738
+  s_3e98741f3cf33e::t_c4f414b0317399 740
+  s_3e98741f3cf33e::t_ca486d5c6038f7 742-743
+src/api/client.ts
+  s_3e98741f3cf33e::t_f66b652dbb3844 852-867
+  s_3e98741f3cf33e::t_3d44164775ab4b 917-926
+src/stores/connectors.ts
+  s_3e98741f3cf33e::t_dd3a405a396122 2
+  s_3e98741f3cf33e::t_f8641e84387441 110-114,117
+  s_3e98741f3cf33e::t_0d1edd85ef4c7c 17-19,21-22
+  s_3e98741f3cf33e::t_b82b7b7ccd890c 23-24
+  s_3e98741f3cf33e::t_c5223f8d551a2d 55
+  s_3e98741f3cf33e::t_a84f272e41315b 92,94,99
+src/locales/zh-CN.ts
+  s_3e98741f3cf33e::t_5ab61e1c21c7db 1146,1152,1180-1218
+server/src/broker/http-executor.ts
+  s_3e98741f3cf33e::t_db094e8066d055 17
+  s_3e98741f3cf33e::t_c7847a03a7269c 107-118
+src/components/console/ConnectorsTab.tsx
+  s_3e98741f3cf33e::t_53127aa4793073 2-12,15-18,34-35,46-51,123,138,143-146,152-160,163-164,166-170,173,175-229,233,236,243-344,353-357,368,375-376,382,384-385,387-389,391,393,397-405,408,428,432,438-526,532,535-536,539,546,552-561,563-571,584,586
+server/src/agents/cli.ts
+  s_3e98741f3cf33e::t_535db664576a49 495-500
+  s_3e98741f3cf33e::t_8a5d8d47d92955 18-19
+  s_3e98741f3cf33e::t_c1ce9942fb843c 6777
+  s_3e98741f3cf33e::t_00750eb3ddc8a1 6137-6179
+server/src/__integration__/personal-connector-review.test.ts
+  s_3e98741f3cf33e::t_4a960d7c6373a2 1-178
+deploy/personal/README.md
+  s_3e98741f3cf33e::t_c0daee280ea6de 63-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "a5f8467edfc742712c779b8a8bfa08c423186d43",
+  "prompts": {},
+  "sessions": {
+    "s_3e98741f3cf33e": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_td31b0v6fr5f",
+        "model": "kr-claude-opus-5.5"
+      },
+      "human_author": "hcl-z <1401859664@qq.com>"
+    }
+  }
+}
