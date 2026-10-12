@@ -53,7 +53,7 @@ import { SKYPE_EMOTICONS_GUIDE } from '../skype-emoticons.js'
 import { finalizeTriage, isRateLimited, parseTriage } from '../triage-core.js'
 import { type ActionSurface, actionSurfaceFor, actionSurfaceText, calendarExampleText, postingMechanicsText } from './prompt-surface.js'
 import { LOOP_DEFAULT_FAST_MODEL, allowUnsandboxedByoa, detectEnginesWithStatus, ENGINE_IDS, engineFailureOf, type DetectedEngineSnapshot, type EngineHopReport, type EngineId, type EngineRunResult, type EngineSession, type EngineUsage, enrichDetectedEngines, evaluateRunnableEngines, getAdapter, isInProcessEngine, runEngineDoctor, type RunnableEngineEvaluation, snapshotDetectedEngines } from './engine.js'
-import { type AuthorizeVerdict, Broker, type ScopeConnector } from '../../broker/broker.js'
+import { type AuthorizeVerdict, Broker, type ScopeConnector, runConnectorTest } from '../../broker/broker.js'
 import { EngineSessionStore, sessionIdPreview } from './session-store.js'
 import { runWithSessionRecovery } from './session-recovery.js'
 
@@ -693,6 +693,24 @@ async function handleVaultEvent(cfg: DaemonConfig, event: Extract<ComputerContro
   await api(cfg.serverUrl, '/api/computers/me/vault-ack', {
     method: 'POST', headers: { Authorization: `Bearer ${cfg.deviceToken}` }, body: JSON.stringify(body),
   }).catch((err) => console.warn(`[computer] vault ack failed: ${err instanceof Error ? err.message : String(err)}`))
+}
+
+/** Run a console test call (T10) and answer with the redacted 2KB preview.
+ *  It runs here because only this host holds the connector's credential. */
+async function handleConnectorTest(cfg: DaemonConfig, event: Extract<ComputerControlEvent, { kind: 'connector.test' }>): Promise<void> {
+  const vault = daemonVault()
+  const out = await runConnectorTest(event.definition, event.action, event.args, {
+    allowLoopbackHttp: brokerAllowsLoopbackHttp(),
+    credential: (connector, name) => vault.get(connector, name),
+    redact: (text) => vault.redactor.redact(text),
+  })
+  console.log(`[computer] connector test ${event.definition.slug}.${event.action}: ${out.ok ? `HTTP ${out.result.status}` : 'failed'}`)
+  const body = out.ok
+    ? { requestId: event.requestId, ok: true, updatedAt: new Date().toISOString(), result: out.result }
+    : { requestId: event.requestId, ok: false, error: out.error }
+  await api(cfg.serverUrl, '/api/computers/me/vault-ack', {
+    method: 'POST', headers: { Authorization: `Bearer ${cfg.deviceToken}` }, body: JSON.stringify(body),
+  }).catch((err) => console.warn(`[computer] connector test ack failed: ${err instanceof Error ? err.message : String(err)}`))
 }
 
 /** `cumora agent computer vault set <connector> <name>` / `vault list`, run on
@@ -3936,6 +3954,7 @@ async function doRun(serverOverride?: string): Promise<void> {
           const parsed = event.data ? parseComputerControlEvent(event.data) : null
           if (!parsed) continue
           if (parsed.kind === 'engine.detect') void rescanEngines(true)
+          else if (parsed.kind === 'connector.test') void handleConnectorTest(cfg, parsed)
           else void handleVaultEvent(cfg, parsed)
         }
         if (!shuttingDown) console.warn(`[computer] control-stream closed by server · retry in ${backoff}ms`)

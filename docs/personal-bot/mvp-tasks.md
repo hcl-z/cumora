@@ -191,15 +191,31 @@ flowchart LR
 
 依赖：T08。
 
-### T10 连接器接入向导与读写标注 · AFK · M
+### T10 连接器接入向导与读写标注 · AFK · M ⏳
 
 做什么：做前端的三步向导：选择类型 → 标注动作 → 录入凭证并试调用。动作默认标为写，非 GET/HEAD 的动作不能改成读。实现 `POST /personal/connectors/:id/test`。提供 bot 命令 `cumora connector draft`，bot 起草的连接器会显示"待你确认"。
 
 验收：
-- [ ] 用 OpenAPI 地址导入后能自动生成动作列表；手写 YAML 也能导入。
-- [ ] 把 POST 动作改成读，服务端返回 400，前端的开关是禁用状态。
-- [ ] 试调用能展示返回结果的前 2KB。
-- [ ] bot 起草的连接器，需要用户确认后才会启用。
+- [x] 用 OpenAPI 地址导入后能自动生成动作列表；手写 YAML 也能导入。
+  - 支持按 URL 导入，也支持直接粘贴 JSON 或 YAML 文档（OpenAPI 3）。按 URL 导入时，server 按连接器的出网规则抓取：只走 https，私网地址拒绝，不跟随重定向，上限 1MB。
+  - 只导入简单类型的路径参数、查询参数和 JSON body 的顶层字段。其他操作跳过，跳过的原因列在"导入时的说明"里，不会半截导入。认证方案能识别 apiKey（header 或 query）和 bearer，凭证名默认是 `<连接器 id>-key`。
+  - 单元测试 `connector-onboarding.test.ts`；集成测试 `personal-connector-review.test.ts`；e2e 用例 `connector-wizard.e2e.ts` 走真实的 server 和 daemon。
+- [x] 把 POST 动作改成读，服务端返回 400，前端的开关是禁用状态。
+  - 前端：读按钮禁用，旁边用文字说明原因，不只靠悬停提示。
+  - 改标注时，存储的 YAML 原文、解析后的定义、`connector_actions` 三处同时更新。集成测试检查了三处一致。
+- [x] 试调用能展示返回结果的前 2KB。
+  - 试调用经设备控制流交给 daemon 执行，因为凭证只在 daemon 上。返回内容先脱敏，再按 UTF-8 截到 2KB，不会截断半个字符。
+  - daemon 会自己再检查一遍动作是不是 GET/HEAD 的读动作，不信任控制流传来的定义。
+  - e2e 用例检查了：API 收到了真实的 key；控制台拿到的内容不超过 2KB，key 显示为 `[REDACTED:…]`；server 日志里没有 key。
+- [x] bot 起草的连接器，需要用户确认后才会启用。
+  - bot 起草时所有动作必须标为写，也不能打开"临时任务可读"。
+  - 只要还有未确认的标注，启用接口就返回 400。OpenAPI 导入和 bot 起草都会生成未确认的标注；手写 YAML 算已确认。
+  - 列表里标出"bot 起草，待你确认"；打开后显示步骤条，停在第 2 步。
+- 实现说明：
+  - 没有做成全屏抽屉。第 1 步是新建表单，第 2、3 步就是草稿的详情页，顶部有三步的步骤条，这样两处不用各写一套。
+  - 新增接口 `POST /personal/connectors/:id/actions/confirm`，用于一次确认全部标注。
+  - 凭证的删除按钮补上了（T09 留下的）。`vault rm` 命令还是没做。
+  - 本地验证：单元测试 1636 个通过，失败的 4 个就是一直以来本机没有 Redis 的那 4 个；集成测试 10 个全部通过；lint、typecheck 和 4 个守卫检查都通过。agent-cli 包 470KB，里面没有混进 pg、ioredis 或 js-yaml。e2e 需要 Redis，等 CI。
 
 依赖：T08、T09。原计划依赖 T31，T31 暂缓后改为沿用现有风格。
 

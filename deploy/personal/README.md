@@ -60,7 +60,13 @@ The Chief runs on the built-in `loop` engine: no CLI to install, but the daemon 
 
 ## Connectors
 
-The 工作台 (Console) entry in the Rail, or the 我 page on mobile, lists connectors. Add one by pasting its YAML; it starts as a draft. Enable it, and turn on "临时任务可读" so bots may call its read actions when you ask them directly. Only https hosts on public addresses are reachable, and write actions are refused until approvals land. Every call and every refusal is recorded in the bot's run timeline.
+The 工作台 (Console) entry in the Rail, or the 我 page on mobile, lists connectors. Adding one takes three steps:
+
+1. Source: paste YAML you wrote, or give an OpenAPI 3 document (its URL or the text). An import turns every operation into a write action.
+2. Mark read / write: downgrade the GET/HEAD actions that only read. Other methods stay write. A connector cannot be enabled until every marking is confirmed (YAML you wrote counts as confirmed).
+3. Credentials and test: set the API key (sealed in the browser for the bot host) and try a read action; the console shows the first 2KB, with the key redacted. Test calls run on the bot host, so it must be online.
+
+Then enable it, and turn on "临时任务可读" so bots may call its read actions when you ask them directly. A bot can propose a connector with `cumora connector draft`; it shows up as "bot 起草，待你确认" with every action write. Only https hosts on public addresses are reachable, and write actions are refused until approvals land. Every call and every refusal is recorded in the bot's run timeline.
 
 ## Tests
 

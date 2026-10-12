@@ -113,6 +113,29 @@ export function validateArgs(action: ConnectorAction, args: unknown): string[] {
   return problems
 }
 
+/** The first `maxBytes` of a UTF-8 string, never splitting a character. */
+export function cutUtf8(text: string, maxBytes: number): { text: string; cut: boolean } {
+  const buf = Buffer.from(text, 'utf8')
+  if (buf.byteLength <= maxBytes) return { text, cut: false }
+  let end = maxBytes
+  while (end > 0 && (buf[end] & 0xc0) === 0x80) end--
+  return { text: buf.subarray(0, end).toString('utf8'), cut: true }
+}
+
+/** How much of a console test call's response is shown (frontend §3.2). */
+export const TEST_PREVIEW_BYTES = 2048
+
+export interface ConnectorTestResult {
+  status: number
+  contentType: string | null
+  durationMs: number
+  /** Size of the whole response body. */
+  bytes: number
+  /** The first TEST_PREVIEW_BYTES of the body, credentials redacted. */
+  preview: string
+  truncated: boolean
+}
+
 export interface BuiltRequest { url: URL; method: HttpMethod; body: string | null; headers: Record<string, string> }
 
 /** The concrete request for a validated call. Path params are URL-encoded so

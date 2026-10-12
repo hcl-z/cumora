@@ -735,11 +735,12 @@ events:
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET / POST | `/personal/connectors` | 列表 / 新建（YAML 或 MCP 地址），新建时状态为 `draft` |
+| GET / POST | `/personal/connectors` | 列表 / 新建，新建时状态为 `draft`。来源可以是手写 YAML（`{ yaml }`，标注算已确认），或 OpenAPI 文档（`{ openapi: { url \| spec, slug? } }`，所有动作先导入为写、未确认）；MCP 地址在 T11 加入。按 URL 导入时，server 按连接器的出网规则抓取文档 |
 | GET / PATCH | `/personal/connectors/:id` | 详情 / 修改状态、`adhoc_read`、定义 |
-| PATCH | `/personal/connectors/:id/actions/:actionId` | 修改 effect；如果 HTTP 方法不是 GET 或 HEAD，不允许改成 read，返回 400 |
+| PATCH | `/personal/connectors/:id/actions/:actionId` | 修改 effect，同时标为已确认；如果 HTTP 方法不是 GET 或 HEAD，不允许改成 read，返回 400。只要还有未确认的动作，`PATCH /personal/connectors/:id` 改成 `active` 就返回 400 |
 | POST | `/personal/connectors/:id/discover` | 让 daemon 发现 MCP 工具，异步执行，完成后推送 `connector.changed` |
-| POST | `/personal/connectors/:id/test` | 试调用一个 read 动作，返回结果的前 2KB |
+| POST | `/personal/connectors/:id/actions/confirm` | 接受全部动作当前的读写标注（T10 新增） |
+| POST | `/personal/connectors/:id/test` | 试调用一个 read 动作，返回结果的前 2KB。经设备控制流交给 daemon 执行（只有它有凭证），草稿状态也能试 |
 | GET | `/computers/:id/vault-key` | 取 daemon 的 ECDH 公钥 |
 | POST / DELETE | `/personal/connectors/:id/credentials[/:name]` | 提交密文 / 删除凭证（见 7.2） |
 | GET | `/personal/capabilities[/:id]` | 列表 / 详情（包含所有版本） |

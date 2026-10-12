@@ -10,9 +10,10 @@
  * skipped its own reporting still leaves a trace.
  */
 import { randomUUID } from 'node:crypto'
+import yaml from 'js-yaml'
 import type { PoolClient } from 'pg'
-import type { ConnectorDefinition, Effect } from '../broker/definition.js'
-import { splitActionName } from '../broker/definition.js'
+import type { ConnectorDefinition, Effect, HttpMethod } from '../broker/definition.js'
+import { SAFE_METHODS, splitActionName } from '../broker/definition.js'
 import { pool } from '../db/pool.js'
 import { findIdempotentCreate, requestHash } from '../idempotent-create.js'
 import { enqueueBroadcast, withOutboxTransaction } from '../realtime-outbox.js'
@@ -222,8 +223,20 @@ export class ConnectorConflictError extends Error {
   readonly status = 409
 }
 
+/** Thrown for a request that is understood but not allowed (400). */
+export class ConnectorRuleError extends Error {
+  readonly status = 400
+}
+
 /** Create a draft connector from YAML. Throws ConnectorSchemaError (400) on
- *  an invalid definition and ConnectorConflictError (409) on a taken slug. */
+ *  an invalid definition and ConnectorConflictError (409) on a taken slug.
+ *
+ *  `effectsConfirmed`: whether a person chose each action's read/write
+ *  marking. True for YAML the user wrote; false for an OpenAPI import (every
+ *  action generated as write) and for a bot's draft. Unconfirmed markings
+ *  must be reviewed before the connector can be enabled. A bot may only
+ *  propose write actions: deciding that something is safe to read freely is
+ *  the user's call. */
 export async function createConnector(args: {
   companyId: string
   actorId: string
@@ -231,9 +244,16 @@ export async function createConnector(args: {
   yaml: string
   adhocRead: boolean
   requestId: string | null
+  effectsConfirmed?: boolean
   parse?: ParseOptions
 }): Promise<{ connector: ConnectorDetailDto; replayed: boolean }> {
   const def = parseConnectorYaml(args.yaml, args.parse)
+  if (args.actorKind === 'bot') {
+    const reads = def.actions.filter((a) => a.effect === 'read').map((a) => a.id)
+    if (reads.length) throw new ConnectorRuleError(`a bot draft must mark every action effect: write; the user downgrades reads (${reads.join(', ')})`)
+    if (args.adhocRead) throw new ConnectorRuleError('a bot draft cannot open the connector to ad-hoc tasks')
+  }
+  const confirmed = args.actorKind === 'user' && args.effectsConfirmed !== false
   const hash = requestHash({ yaml: args.yaml, adhocRead: args.adhocRead })
   const result = await withOutboxTransaction(async (client) => {
     const replay = await findIdempotentCreate(client, {
@@ -253,9 +273,9 @@ export async function createConnector(args: {
     )
     for (const a of def.actions) {
       await client.query(
-        `INSERT INTO connector_actions (connector_id, action_id, effect, http_method, params_schema, description)
-         VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
-        [id, a.id, a.effect, a.method, JSON.stringify(a.params), a.description ?? null],
+        `INSERT INTO connector_actions (connector_id, action_id, effect, effect_confirmed, http_method, params_schema, description)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
+        [id, a.id, a.effect, confirmed, a.method, JSON.stringify(a.params), a.description ?? null],
       )
     }
     await enqueueBroadcast(client, CH_CONNECTORS, {
@@ -276,6 +296,16 @@ export async function updateConnector(args: {
   adhocRead?: boolean
 }): Promise<ConnectorDetailDto | null> {
   const found = await withOutboxTransaction(async (client) => {
+    if (args.status === 'active') {
+      const { rows } = await client.query<{ action_id: string }>(
+        `SELECT a.action_id FROM connector_actions a JOIN connectors c ON c.id = a.connector_id
+          WHERE c.company_id = $1 AND c.id = $2 AND NOT a.effect_confirmed ORDER BY a.action_id`,
+        [args.companyId, args.id],
+      )
+      if (rows.length) {
+        throw new ConnectorRuleError(`confirm the read/write marking of every action before enabling (unconfirmed: ${rows.map((r) => r.action_id).join(', ')})`)
+      }
+    }
     const { rowCount } = await client.query(
       `UPDATE connectors
           SET status = COALESCE($3, status),
@@ -291,6 +321,91 @@ export async function updateConnector(args: {
     return true
   })
   return found ? getConnector(args.companyId, args.id) : null
+}
+
+/** Rewrite one action's effect inside the stored YAML, keeping the text,
+ *  the parsed definition and connector_actions in agreement. */
+function withEffect(source: string, actionId: string, effect: Effect): string {
+  const doc = yaml.load(source, { schema: yaml.JSON_SCHEMA }) as { actions?: Array<Record<string, unknown>> }
+  const action = doc.actions?.find((a) => a?.id === actionId)
+  if (!action) throw new Error(`action ${actionId} is missing from the stored definition`)
+  action.effect = effect
+  return yaml.dump(doc, { lineWidth: 120, noRefs: true, quotingType: '"' })
+}
+
+/** Set one action's read/write marking; the user's choice is the confirmed
+ *  one. A GET/HEAD action may be either; any other method stays write.
+ *  Null when the connector or action does not exist. */
+export async function updateConnectorAction(args: {
+  companyId: string
+  id: string
+  actionId: string
+  effect: Effect
+  parse?: ParseOptions
+}): Promise<ConnectorDetailDto | null> {
+  const found = await withOutboxTransaction(async (client) => {
+    const { rows } = await client.query<{ definition_yaml: string; http_method: string | null }>(
+      `SELECT c.definition_yaml, a.http_method FROM connectors c
+         JOIN connector_actions a ON a.connector_id = c.id AND a.action_id = $3
+        WHERE c.company_id = $1 AND c.id = $2 FOR UPDATE OF c`,
+      [args.companyId, args.id, args.actionId],
+    )
+    const row = rows[0]
+    if (!row) return false
+    if (args.effect === 'read' && !SAFE_METHODS.includes((row.http_method ?? '') as HttpMethod)) {
+      throw new ConnectorRuleError(`a ${row.http_method} action changes something on the other side and cannot be marked read`)
+    }
+    const source = withEffect(row.definition_yaml, args.actionId, args.effect)
+    const def = parseConnectorYaml(source, args.parse)
+    await client.query(
+      `UPDATE connectors SET definition_yaml = $3, definition = $4::jsonb, updated_at = now() WHERE company_id = $1 AND id = $2`,
+      [args.companyId, args.id, source, JSON.stringify(def)],
+    )
+    await client.query(
+      `UPDATE connector_actions SET effect = $3, effect_confirmed = true WHERE connector_id = $1 AND action_id = $2`,
+      [args.id, args.actionId, args.effect],
+    )
+    await enqueueBroadcast(client, CH_CONNECTORS, {
+      type: 'connector.changed', kind: 'connector.updated', companyId: args.companyId, connectorId: args.id,
+    })
+    return true
+  })
+  return found ? getConnector(args.companyId, args.id) : null
+}
+
+/** Accept the current read/write marking of every action (wizard step 2). */
+export async function confirmConnectorActions(companyId: string, id: string): Promise<ConnectorDetailDto | null> {
+  const found = await withOutboxTransaction(async (client) => {
+    const owned = await client.query(`SELECT 1 FROM connectors WHERE company_id = $1 AND id = $2`, [companyId, id])
+    if (!owned.rowCount) return false
+    await client.query(`UPDATE connector_actions SET effect_confirmed = true WHERE connector_id = $1`, [id])
+    await client.query(`UPDATE connectors SET updated_at = now() WHERE id = $1`, [id])
+    await enqueueBroadcast(client, CH_CONNECTORS, { type: 'connector.changed', kind: 'connector.updated', companyId, connectorId: id })
+    return true
+  })
+  return found ? getConnector(companyId, id) : null
+}
+
+/** What a console test call sends to the daemon: the stored definition cut
+ *  down to the one action. Only read actions on GET/HEAD can be tried, in
+ *  any status (testing a draft before enabling it is the point). */
+export async function connectorTestTarget(companyId: string, id: string, actionId: string): Promise<
+  { ok: true; definition: ConnectorDefinition } | { ok: false; status: 404 | 400; error: string }
+> {
+  const { rows } = await pool.query<{ definition: ConnectorDefinition; effect: Effect | null }>(
+    `SELECT c.definition, a.effect FROM connectors c
+       LEFT JOIN connector_actions a ON a.connector_id = c.id AND a.action_id = $3
+      WHERE c.company_id = $1 AND c.id = $2`,
+    [companyId, id, actionId],
+  )
+  const row = rows[0]
+  if (!row) return { ok: false, status: 404, error: 'connector not found' }
+  const action = row.definition.actions.find((a) => a.id === actionId)
+  if (!row.effect || !action) return { ok: false, status: 404, error: `the connector has no action ${actionId}` }
+  if (row.effect !== 'read' || action.effect !== 'read' || !SAFE_METHODS.includes(action.method)) {
+    return { ok: false, status: 400, error: 'only read actions can be tried from the console' }
+  }
+  return { ok: true, definition: { ...row.definition, actions: [action] } }
 }
 
 // ── broker (runtime) ────────────────────────────────────────────────────

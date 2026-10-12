@@ -849,6 +849,22 @@ export interface ApiConnectorDetail extends ApiConnector {
   credentials: Array<{ name: string; updatedAt: string | null }>
 }
 
+/** How a connector is created: YAML the user wrote, or an OpenAPI document
+ *  (fetched from a URL or pasted) whose actions all start as write. */
+export type ApiConnectorSource =
+  | { yaml: string }
+  | { openapi: { url: string; slug?: string } | { spec: string; slug?: string } }
+
+/** A console test call: the first 2KB of the response, credentials redacted. */
+export interface ApiConnectorTestResult {
+  status: number
+  contentType: string | null
+  durationMs: number
+  bytes: number
+  preview: string
+  truncated: boolean
+}
+
 export const api = {
   health: () => http<{ ok: boolean; ts: number }>('/health'),
   me: () => http<{ id: string; name: string; kind: string }>('/me'),
@@ -898,8 +914,16 @@ export const api = {
   listProjects: () => http<ApiProject[]>('/projects'),
   listConnectors: () => http<{ connectors: ApiConnector[] }>('/personal/connectors'),
   getConnector: (id: string) => http<{ connector: ApiConnectorDetail }>(`/personal/connectors/${encodeURIComponent(id)}`),
-  createConnector: (input: { yaml: string; adhocRead: boolean; requestId?: string }) =>
-    http<{ connector: ApiConnectorDetail; replayed: boolean }>('/personal/connectors', { method: 'POST', body: JSON.stringify(input) }),
+  createConnector: (input: ApiConnectorSource & { adhocRead: boolean; requestId?: string }) =>
+    http<{ connector: ApiConnectorDetail; replayed: boolean; warnings: string[] }>('/personal/connectors', { method: 'POST', body: JSON.stringify(input) }),
+  setConnectorActionEffect: (id: string, actionId: string, effect: 'read' | 'write') =>
+    http<{ connector: ApiConnectorDetail }>(`/personal/connectors/${encodeURIComponent(id)}/actions/${encodeURIComponent(actionId)}`, {
+      method: 'PATCH', body: JSON.stringify({ effect }),
+    }),
+  confirmConnectorActions: (id: string) =>
+    http<{ connector: ApiConnectorDetail }>(`/personal/connectors/${encodeURIComponent(id)}/actions/confirm`, { method: 'POST' }),
+  testConnector: (id: string, input: { action: string; args: Record<string, unknown> }) =>
+    http<{ result: ApiConnectorTestResult }>(`/personal/connectors/${encodeURIComponent(id)}/test`, { method: 'POST', body: JSON.stringify(input) }),
   updateConnector: (id: string, input: { status?: ApiConnectorStatus; adhocRead?: boolean }) =>
     http<{ connector: ApiConnectorDetail }>(`/personal/connectors/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) }),
   getVaultKey: () => http<{ computerId: string; online: boolean; publicKey: import('@/lib/vault-seal').EcPublicJwk }>('/personal/vault-key'),

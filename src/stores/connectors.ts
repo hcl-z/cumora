@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { type ApiConnector, type ApiConnectorDetail, type ApiConnectorStatus, api, ws } from '@/api/client'
+import { type ApiConnector, type ApiConnectorDetail, type ApiConnectorSource, type ApiConnectorStatus, api, ws } from '@/api/client'
 import { isForActiveWorkspace } from '@/lib/tenant-events'
 import { commitIfContextCurrent, getActiveCompanyId } from './auth'
 
@@ -14,8 +14,14 @@ interface ConnectorsState {
   error: string | null
   load: (force?: boolean) => Promise<void>
   select: (id: string | null) => Promise<void>
-  create: (input: { yaml: string; adhocRead: boolean }) => Promise<ApiConnectorDetail | null>
+  /** Warnings from an OpenAPI import (operations skipped or simplified). */
+  warnings: string[]
+  create: (input: ApiConnectorSource & { adhocRead: boolean }) => Promise<ApiConnectorDetail | null>
   update: (id: string, input: { status?: ApiConnectorStatus; adhocRead?: boolean }) => Promise<void>
+  setEffect: (id: string, actionId: string, effect: 'read' | 'write') => Promise<void>
+  confirmActions: (id: string) => Promise<void>
+  /** Run one change that answers with the updated connector. */
+  mutate: (id: string, run: () => Promise<{ connector: ApiConnectorDetail }>) => Promise<void>
   /** Patch one row after `connector.changed`. */
   refreshOne: (id: string) => Promise<void>
   reset: () => void
@@ -46,6 +52,7 @@ const INITIAL = {
   details: {} as Record<string, ApiConnectorDetail>,
   saving: false,
   error: null as string | null,
+  warnings: [] as string[],
 }
 
 export const useConnectors = create<ConnectorsState>((set, get) => ({
@@ -82,13 +89,14 @@ export const useConnectors = create<ConnectorsState>((set, get) => ({
   },
 
   create: async (input) => {
-    set({ saving: true, error: null })
+    set({ saving: true, error: null, warnings: [] })
     try {
-      const { connector } = await api.createConnector({ ...input, requestId: crypto.randomUUID() })
+      const { connector, warnings } = await api.createConnector({ ...input, requestId: crypto.randomUUID() })
       set((s) => ({
         connectors: upsert(s.connectors, summary(connector)),
         details: { ...s.details, [connector.id]: connector },
         selectedId: connector.id,
+        warnings: warnings ?? [],
       }))
       return connector
     } catch (error) {
@@ -99,10 +107,14 @@ export const useConnectors = create<ConnectorsState>((set, get) => ({
     }
   },
 
-  update: async (id, input) => {
+  update: (id, input) => get().mutate(id, () => api.updateConnector(id, input)),
+  setEffect: (id, actionId, effect) => get().mutate(id, () => api.setConnectorActionEffect(id, actionId, effect)),
+  confirmActions: (id) => get().mutate(id, () => api.confirmConnectorActions(id)),
+
+  mutate: async (id, run) => {
     set({ saving: true, error: null })
     try {
-      const { connector } = await api.updateConnector(id, input)
+      const { connector } = await run()
       set((s) => ({ connectors: upsert(s.connectors, summary(connector)), details: { ...s.details, [id]: connector } }))
     } catch (error) {
       set({ error: message(error) })

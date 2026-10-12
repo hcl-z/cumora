@@ -14,7 +14,7 @@ import { lookup as dnsLookup, type LookupAddress } from 'node:dns'
 import { request as httpRequest, type IncomingMessage } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { isIP, type LookupFunction } from 'node:net'
-import { type ConnectorAction, type ConnectorDefinition, buildRequest, isLoopbackAddress, isPrivateAddress } from './definition.js'
+import { type BuiltRequest, type ConnectorAction, type ConnectorDefinition, buildRequest, isLoopbackAddress, isPrivateAddress } from './definition.js'
 
 export const HTTP_TIMEOUT_MS = 30_000
 export const MAX_RESPONSE_BYTES = 2 * 1024 * 1024
@@ -104,7 +104,18 @@ export async function executeHttp(
   args: Record<string, unknown>,
   opts: ExecuteOptions = {},
 ): Promise<HttpResult> {
-  const built = buildRequest(def, action, args, opts.credential)
+  return sendGuarded(buildRequest(def, action, args, opts.credential), opts)
+}
+
+/** A plain GET under the same egress rules, for fetching an OpenAPI document
+ *  the user pointed the import at (server side, no credential). */
+export async function fetchPublic(url: string, opts: Omit<ExecuteOptions, 'credential'> = {}): Promise<HttpResult> {
+  let parsed: URL
+  try { parsed = new URL(url) } catch { throw new ConnectorCallError('not a valid URL', 'blocked') }
+  return sendGuarded({ url: parsed, method: 'GET', body: null, headers: {} }, opts)
+}
+
+async function sendGuarded(built: BuiltRequest, opts: ExecuteOptions): Promise<HttpResult> {
   const allowLoopback = opts.allowLoopbackHttp === true
   checkUrl(built.url, allowLoopback)
   const timeoutMs = opts.timeoutMs ?? HTTP_TIMEOUT_MS

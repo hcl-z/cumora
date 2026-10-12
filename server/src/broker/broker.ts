@@ -10,7 +10,9 @@
  * supplies the server round-trips as BrokerDeps.
  */
 import { createHash } from 'node:crypto'
-import { type ConnectorAction, type ConnectorDefinition, type Effect, splitActionName, validateArgs } from './definition.js'
+import {
+  type ConnectorAction, type ConnectorDefinition, type ConnectorTestResult, type Effect, TEST_PREVIEW_BYTES, cutUtf8, splitActionName, validateArgs,
+} from './definition.js'
 import { ConnectorCallError, type ExecuteOptions, RateLimiter, executeHttp, type HttpResult } from './http-executor.js'
 
 export interface ScopeAction { name: string; effect: Effect; description: string | null; paramsSchema: Record<string, unknown> }
@@ -56,12 +58,38 @@ export function argsHash(args: unknown): string {
   return createHash('sha256').update(JSON.stringify(stable(args ?? {}))).digest('hex')
 }
 
-function cutUtf8(text: string, maxBytes: number): { text: string; cut: boolean } {
-  const buf = Buffer.from(text, 'utf8')
-  if (buf.byteLength <= maxBytes) return { text, cut: false }
-  let end = maxBytes
-  while (end > 0 && (buf[end] & 0xc0) === 0x80) end--
-  return { text: buf.subarray(0, end).toString('utf8'), cut: true }
+/** A console test call (task T10): run one read action of a definition the
+ *  server sent and return the first 2KB, redacted. Not a bot call, so no
+ *  evidence id and no run event. The daemon rechecks that the action is a
+ *  GET/HEAD read: the stream it came over is not trusted to have checked. */
+export async function runConnectorTest(
+  def: ConnectorDefinition,
+  actionId: string,
+  args: Record<string, unknown>,
+  deps: Pick<BrokerDeps, 'credential' | 'redact' | 'execute' | 'allowLoopbackHttp'>,
+): Promise<{ ok: true; result: ConnectorTestResult } | { ok: false; error: string }> {
+  const redact = (t: string) => (deps.redact ? deps.redact(t) : t)
+  const spec = def.actions.find((a) => a.id === actionId)
+  if (!spec) return { ok: false, error: `no action ${actionId}` }
+  if (spec.effect !== 'read' || (spec.method !== 'GET' && spec.method !== 'HEAD')) return { ok: false, error: 'only read actions can be tried' }
+  const problems = validateArgs(spec, args)
+  if (problems.length) return { ok: false, error: `invalid args: ${problems.join('; ')}` }
+  let credential: string | null = null
+  if (def.auth) {
+    try { credential = deps.credential?.(def.slug, def.auth.credential) ?? null } catch { credential = null }
+    if (!credential) return { ok: false, error: `the credential ${def.auth.credential} is not set on the bot host` }
+  }
+  try {
+    const res = await (deps.execute ?? executeHttp)(def, spec, args, { allowLoopbackHttp: deps.allowLoopbackHttp, credential })
+    const { text, cut } = cutUtf8(redact(res.body.toString('utf8')), TEST_PREVIEW_BYTES)
+    return {
+      ok: true,
+      result: { status: res.status, contentType: res.contentType, durationMs: res.durationMs, bytes: res.body.byteLength, preview: text, truncated: cut },
+    }
+  } catch (err) {
+    const reason = err instanceof ConnectorCallError ? ` (${err.reason})` : ''
+    return { ok: false, error: redact(`${err instanceof Error ? err.message : String(err)}${reason}`).slice(0, 300) }
+  }
 }
 
 export class Broker {

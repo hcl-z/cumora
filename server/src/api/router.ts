@@ -56,19 +56,24 @@ import {
   setComputerDefaultEngine, updateEngineDefaults, getEngineDefaults,
   rotateCompanyPairingCode, PAIRABLE_ENGINES, type EngineId,
 } from '../agents/computer/registry.js'
-import { attachComputerControlStream, deliverEngineDetect, recordVaultAck, requestVault } from '../agents/computer/control-bus.js'
+import {
+  attachComputerControlStream, deliverEngineDetect, recordVaultAck, requestConnectorTest, requestVault,
+} from '../agents/computer/control-bus.js'
 import { companyTier } from '../tier.js'
 import { createShippingRouter } from './shipping-router.js'
 import {
   findIdempotentCreate, IdempotencyConflictError,
   parseRequestId, requestHash,
 } from '../idempotent-create.js'
+import { TEST_PREVIEW_BYTES, cutUtf8, validateArgs } from '../broker/definition.js'
+import { ConnectorCallError, fetchPublic } from '../broker/http-executor.js'
 import type { SealedCredential } from '../broker/vault.js'
 import { ConnectorSchemaError } from '../personal/connector-schema.js'
 import {
-  ConnectorConflictError, connectorCredentialTarget, createConnector, getConnector, listConnectors,
-  recordCredential, syncVaultInventory, updateConnector, workspaceVaultHost,
+  ConnectorConflictError, ConnectorRuleError, confirmConnectorActions, connectorCredentialTarget, connectorTestTarget, createConnector,
+  getConnector, listConnectors, recordCredential, syncVaultInventory, updateConnector, updateConnectorAction, workspaceVaultHost,
 } from '../personal/connectors.js'
+import { MAX_OPENAPI_BYTES, openApiToConnectorYaml } from '../personal/openapi-import.js'
 
 /** Re-export so older imports (server/index.ts, agents/cli.ts) keep working
  *  after the storage abstraction moved this constant. */
@@ -999,25 +1004,108 @@ api.get('/personal/connectors', safe(async (req, res) => {
   res.json({ connectors: await listConnectors(companyId) })
 }))
 
-api.post('/personal/connectors', safe(async (req, res) => {
-  requirePersonalMode()
-  const { userId, companyId } = await requireCompany(req)
-  const yamlSource = typeof req.body?.yaml === 'string' ? req.body.yaml : ''
-  if (!yamlSource.trim()) throw new HttpError(400, 'yaml is required')
-  if (req.body?.adhocRead !== undefined && typeof req.body.adhocRead !== 'boolean') throw new HttpError(400, 'adhocRead must be a boolean')
+/** Map the connector service's typed errors onto HTTP. */
+async function connectorCall<T>(res: Response, run: () => Promise<T>): Promise<T | undefined> {
   try {
-    const { connector, replayed } = await createConnector({
-      companyId, actorId: userId, actorKind: 'user', yaml: yamlSource,
-      adhocRead: req.body?.adhocRead === true,
-      requestId: createRequestId(req.body?.requestId),
-      parse: { allowLoopbackHttp: env.PERSONAL_CONNECTOR_ALLOW_LOOPBACK_HTTP },
-    })
-    res.status(replayed ? 200 : 201).json({ connector, replayed })
+    return await run()
   } catch (err) {
-    if (err instanceof ConnectorSchemaError) { res.status(400).json({ error: err.message, problems: err.problems }); return }
+    if (err instanceof ConnectorSchemaError) { res.status(400).json({ error: err.message, problems: err.problems }); return undefined }
+    if (err instanceof ConnectorRuleError) throw new HttpError(400, err.message)
     if (err instanceof ConnectorConflictError || err instanceof IdempotencyConflictError) throw new HttpError(409, err.message)
     throw err
   }
+}
+
+/** The OpenAPI document for an import: pasted, or fetched under the same
+ *  egress rules as connector calls (https, public hosts, no redirects). */
+async function openApiSource(body: Record<string, unknown>): Promise<{ source: string; sourceUrl?: string }> {
+  if (typeof body.spec === 'string' && body.spec.trim()) return { source: body.spec }
+  if (typeof body.url !== 'string' || !body.url.trim()) throw new HttpError(400, 'openapi needs a url or a spec')
+  try {
+    const got = await fetchPublic(body.url.trim(), {
+      allowLoopbackHttp: env.PERSONAL_CONNECTOR_ALLOW_LOOPBACK_HTTP, maxBytes: MAX_OPENAPI_BYTES, timeoutMs: 15_000,
+    })
+    if (got.status !== 200) throw new HttpError(422, `fetching the OpenAPI document returned HTTP ${got.status}`)
+    return { source: got.body.toString('utf8'), sourceUrl: body.url.trim() }
+  } catch (err) {
+    if (err instanceof ConnectorCallError) throw new HttpError(422, `could not fetch the OpenAPI document: ${err.message}`)
+    throw err
+  }
+}
+
+/** Create a draft from YAML the user wrote (`{ yaml }`, markings confirmed)
+ *  or from an OpenAPI document (`{ openapi: { url | spec, slug? } }`, every
+ *  action write and unconfirmed until reviewed). */
+api.post('/personal/connectors', safe(async (req, res) => {
+  requirePersonalMode()
+  const { userId, companyId } = await requireCompany(req)
+  if (req.body?.adhocRead !== undefined && typeof req.body.adhocRead !== 'boolean') throw new HttpError(400, 'adhocRead must be a boolean')
+  let yamlSource = typeof req.body?.yaml === 'string' ? req.body.yaml : ''
+  let warnings: string[] = []
+  const openapi = req.body?.openapi as Record<string, unknown> | undefined
+  if (openapi !== undefined) {
+    if (!openapi || typeof openapi !== 'object' || yamlSource) throw new HttpError(400, 'send either yaml or openapi')
+    if (openapi.slug !== undefined && typeof openapi.slug !== 'string') throw new HttpError(400, 'openapi.slug must be a string')
+    const { source, sourceUrl } = await openApiSource(openapi)
+    const imported = await connectorCall(res, async () => openApiToConnectorYaml(source, { slug: openapi.slug as string | undefined, sourceUrl }))
+    if (!imported) return
+    yamlSource = imported.yaml
+    warnings = imported.warnings
+  }
+  if (!yamlSource.trim()) throw new HttpError(400, 'yaml is required')
+  const created = await connectorCall(res, () => createConnector({
+    companyId, actorId: userId, actorKind: 'user', yaml: yamlSource,
+    adhocRead: req.body?.adhocRead === true,
+    effectsConfirmed: openapi === undefined,
+    requestId: createRequestId(req.body?.requestId),
+    parse: { allowLoopbackHttp: env.PERSONAL_CONNECTOR_ALLOW_LOOPBACK_HTTP },
+  }))
+  if (!created) return
+  res.status(created.replayed ? 200 : 201).json({ connector: created.connector, replayed: created.replayed, warnings })
+}))
+
+/** Mark one action read or write. A non-GET/HEAD action cannot be read. */
+api.patch('/personal/connectors/:id/actions/:actionId', safe(async (req, res) => {
+  requirePersonalMode()
+  const { companyId } = await requireCompany(req)
+  const effect = req.body?.effect
+  if (effect !== 'read' && effect !== 'write') throw new HttpError(400, 'effect must be read or write')
+  const connector = await connectorCall(res, () => updateConnectorAction({
+    companyId, id: String(req.params.id), actionId: String(req.params.actionId), effect,
+    parse: { allowLoopbackHttp: env.PERSONAL_CONNECTOR_ALLOW_LOOPBACK_HTTP },
+  }))
+  if (connector === undefined) return
+  if (!connector) throw new HttpError(404, 'connector or action not found')
+  res.json({ connector })
+}))
+
+/** Accept the read/write marking of every action as it stands. */
+api.post('/personal/connectors/:id/actions/confirm', safe(async (req, res) => {
+  requirePersonalMode()
+  const { companyId } = await requireCompany(req)
+  const connector = await confirmConnectorActions(companyId, String(req.params.id))
+  if (!connector) throw new HttpError(404, 'connector not found')
+  res.json({ connector })
+}))
+
+/** Try one read action through the bot host and show the first 2KB. */
+api.post('/personal/connectors/:id/test', safe(async (req, res) => {
+  requirePersonalMode()
+  const { companyId } = await requireCompany(req)
+  const actionId = typeof req.body?.action === 'string' ? req.body.action : ''
+  const args = req.body?.args ?? {}
+  if (!actionId) throw new HttpError(400, 'action is required')
+  const target = await connectorTestTarget(companyId, String(req.params.id), actionId)
+  if (!target.ok) throw new HttpError(target.status, target.error)
+  const problems = validateArgs(target.definition.actions[0], args)
+  if (problems.length) throw new HttpError(400, `invalid args: ${problems.join('; ')}`)
+  const host = await workspaceVaultHost(companyId)
+  if (!host?.online) throw new HttpError(409, 'the bot host is offline; test calls run on it')
+  const out = await requestConnectorTest(host.computerId, { kind: 'connector.test', definition: target.definition, action: actionId, args })
+  if (out.status === 'offline') throw new HttpError(409, 'the bot host is offline; test calls run on it')
+  if (out.status === 'timeout') throw new HttpError(504, 'the bot host did not answer in time')
+  if (out.status === 'failed') throw new HttpError(422, out.error)
+  res.json({ result: out.result })
 }))
 
 api.get('/personal/connectors/:id', safe(async (req, res) => {
@@ -1038,7 +1126,8 @@ api.patch('/personal/connectors/:id', safe(async (req, res) => {
   }
   if (adhocRead !== undefined && typeof adhocRead !== 'boolean') throw new HttpError(400, 'adhocRead must be a boolean')
   if (status === undefined && adhocRead === undefined) throw new HttpError(400, 'nothing to change')
-  const connector = await updateConnector({ companyId, id: String(req.params.id), status, adhocRead })
+  const connector = await connectorCall(res, () => updateConnector({ companyId, id: String(req.params.id), status, adhocRead }))
+  if (connector === undefined) return
   if (!connector) throw new HttpError(404, 'connector not found')
   res.json({ connector })
 }))
@@ -1623,8 +1712,19 @@ api.post('/computers/me/vault-ack', safe(async (req, res) => {
   const { computerId } = await requireDevice(req)
   const requestId = typeof req.body?.requestId === 'string' ? req.body.requestId : ''
   if (!requestId) throw new HttpError(400, 'requestId is required')
+  const r = req.body?.result as Record<string, unknown> | undefined
+  const result = r && typeof r === 'object' && typeof r.status === 'number' && typeof r.preview === 'string'
+    ? {
+        status: r.status,
+        contentType: typeof r.contentType === 'string' ? r.contentType.slice(0, 200) : null,
+        durationMs: typeof r.durationMs === 'number' ? r.durationMs : 0,
+        bytes: typeof r.bytes === 'number' ? r.bytes : 0,
+        preview: cutUtf8(r.preview, TEST_PREVIEW_BYTES).text,
+        truncated: r.truncated === true,
+      }
+    : undefined
   const ack = req.body?.ok === true && typeof req.body?.updatedAt === 'string'
-    ? { ok: true as const, updatedAt: req.body.updatedAt as string }
+    ? { ok: true as const, updatedAt: req.body.updatedAt as string, ...(result ? { result } : {}) }
     : { ok: false as const, error: (typeof req.body?.error === 'string' ? req.body.error : 'the bot host could not store it').slice(0, 300) }
   if (!(await recordVaultAck(computerId, requestId, ack))) throw new HttpError(404, 'no such pending vault request for this computer')
   res.json({ ok: true })

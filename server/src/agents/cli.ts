@@ -15,6 +15,8 @@ import { storage, freshenAttachmentUrl, type StoredAttachment } from '../storage
 import { env } from '../env.js'
 import type { CliResult, CliSideEffect } from './cli-result.js'
 import { fetchImageBytes } from './image-fetcher.js'
+import { ConnectorSchemaError } from '../personal/connector-schema.js'
+import { ConnectorConflictError, ConnectorRuleError, createConnector, listConnectors } from '../personal/connectors.js'
 import { stripLoneSurrogates } from './text-safety.js'
 import { dispatchMessagePush } from '../push.js'
 import {
@@ -489,6 +491,12 @@ SKILLS  (progressive-disclosure capability packs in your own workspace):
   image generate "<prompt>" [--size square|wide|tall]
                                                    generate an image (gpt-image-2), upload to storage,
                                                    return signed URL + key for later 'reply --attach <url>'
+
+CONNECTORS  (personal mode: external APIs the user enables for you):
+  connector list                                   connectors in the workspace, their status and actions
+  connector draft --yaml "<definition>"            propose a connector (or --file <path> via the shim).
+                                                   Mark every action effect: write; the user reviews the
+                                                   read/write marking, adds credentials and enables it.
 
 GLOBAL FLAGS:
   --json
@@ -6126,6 +6134,49 @@ async function enqueueDocChanged(
   })
 }
 
+/** `connector list | draft` (docs/personal-bot/mvp-backend-design.md §12.2).
+ *  A draft is only a proposal: it lands as status draft with every action
+ *  write and unconfirmed, and only the user can mark reads and enable it. */
+async function cmdConnector(parsed: ParsedArgs): Promise<CliResult> {
+  if (!env.PERSONAL_MODE) return err('connectors are only available in personal mode')
+  const op = parsed.positional[0] ?? 'list'
+  const me = resolveAs(parsed)
+  const companyId = await agentCompany(me)
+  if (!companyId) return err(`unknown agent ${me} (no company)`)
+  if (op === 'list') {
+    const connectors = await listConnectors(companyId)
+    if (parsed.flags.json) {
+      return ok(JSON.stringify(connectors.map(({ slug, status, createdByKind, adhocRead, actions }) => ({
+        connector: slug, status, createdBy: createdByKind, adhocRead,
+        actions: actions.map((a) => ({ action: `${slug}.${a.id}`, effect: a.effect, confirmed: a.effectConfirmed })),
+      }))))
+    }
+    if (!connectors.length) return ok('no connectors yet. Propose one with `cumora connector draft --yaml "..."`.')
+    return ok(connectors.map((c) => {
+      const head = `${c.slug}  ${c.status}${c.createdByKind === 'bot' ? ' (bot draft)' : ''}${c.adhocRead ? '  ad-hoc read' : ''}`
+      return [head, ...c.actions.map((a) => `  ${c.slug}.${a.id}  ${a.effect}${a.effectConfirmed ? '' : ' (unconfirmed)'}  ${a.method ?? ''}`)].join('\n')
+    }).join('\n'))
+  }
+  if (op === 'draft') {
+    const literal = parsed.literalFrom !== undefined ? parsed.positional.slice(parsed.literalFrom).join(' ') : ''
+    const source = typeof parsed.flags.yaml === 'string' ? parsed.flags.yaml : literal
+    if (!source.trim()) return err('usage: connector draft --yaml "<definition>" (or --file <path>)')
+    try {
+      const { connector } = await createConnector({
+        companyId, actorId: me, actorKind: 'bot', yaml: source, adhocRead: false, requestId: null,
+        parse: { allowLoopbackHttp: env.PERSONAL_CONNECTOR_ALLOW_LOOPBACK_HTTP },
+      })
+      return ok(`drafted connector ${connector.slug} (${connector.actions.length} actions, all write). ` +
+        'Tell the user it is waiting in the console: they confirm which actions are read-only, add any credential and enable it.')
+    } catch (e) {
+      if (e instanceof ConnectorSchemaError) return err(`invalid connector:\n- ${e.problems.join('\n- ')}`)
+      if (e instanceof ConnectorRuleError || e instanceof ConnectorConflictError) return err(e.message)
+      throw e
+    }
+  }
+  return err('usage: connector list | connector draft --yaml "<definition>"')
+}
+
 async function cmdDoc(parsed: ParsedArgs): Promise<CliResult> {
   const op = parsed.positional[0] ?? 'ls'
   const me = resolveAs(parsed)
@@ -6723,6 +6774,7 @@ export async function runCli(argv: string[]): Promise<CliResult> {
       case 'pull-group':          return await runTool('pull_group', parsed)
       case 'palette':             return await runTool('palette', parsed)
       case 'image':               return await cmdImage(parsed)
+      case 'connector':           return await cmdConnector(parsed)
       default:
         return err(`unknown subcommand: ${sub}\nrun "cumora help" for usage`)
     }

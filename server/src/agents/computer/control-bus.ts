@@ -89,10 +89,22 @@ const VAULT_PENDING_PREFIX = 'cumora:vault-pending:'
 const VAULT_ACK_PREFIX = 'cumora:vault-ack:'
 const VAULT_TTL_SECONDS = 60
 
-export type VaultAck = { ok: true; updatedAt: string } | { ok: false; error: string }
+// A console test call (connector.test) uses the same request/ack round trip;
+// its ack also carries the redacted 2KB preview.
+
+export type VaultAck =
+  | { ok: true; updatedAt: string; result?: import('../../broker/definition.js').ConnectorTestResult }
+  | { ok: false; error: string }
 type VaultRequest =
   | { kind: 'vault.put'; connector: string; name: string; sealed: import('../../broker/vault.js').SealedCredential }
   | { kind: 'vault.delete'; connector: string; name: string }
+type TestRequest = {
+  kind: 'connector.test'
+  definition: import('../../broker/definition.js').ConnectorDefinition
+  action: string
+  args: Record<string, unknown>
+}
+type DaemonOutcome = { status: 'failed'; error: string } | { status: 'offline' } | { status: 'timeout' }
 
 /** Relay one vault request and wait for the daemon's answer. `offline` means
  *  no daemon stream is connected to receive it. */
@@ -100,7 +112,27 @@ export async function requestVault(
   computerId: string,
   request: VaultRequest,
   timeoutMs = 10_000,
-): Promise<{ status: 'ok'; updatedAt: string } | { status: 'failed'; error: string } | { status: 'offline' } | { status: 'timeout' }> {
+): Promise<{ status: 'ok'; updatedAt: string } | DaemonOutcome> {
+  const out = await requestDaemon(computerId, request, timeoutMs)
+  return out.status === 'ok' ? { status: 'ok', updatedAt: out.ack.updatedAt } : out
+}
+
+/** Run a console test call on the daemon. Waits past the executor's 30s. */
+export async function requestConnectorTest(
+  computerId: string,
+  request: TestRequest,
+  timeoutMs = 40_000,
+): Promise<{ status: 'ok'; result: import('../../broker/definition.js').ConnectorTestResult } | DaemonOutcome> {
+  const out = await requestDaemon(computerId, request, timeoutMs)
+  if (out.status !== 'ok') return out
+  return out.ack.result ? { status: 'ok', result: out.ack.result } : { status: 'failed', error: 'the bot host sent no result' }
+}
+
+async function requestDaemon(
+  computerId: string,
+  request: VaultRequest | TestRequest,
+  timeoutMs: number,
+): Promise<{ status: 'ok'; ack: Extract<VaultAck, { ok: true }> } | DaemonOutcome> {
   const requestId = randomUUID()
   await redis.set(VAULT_PENDING_PREFIX + requestId, computerId, 'EX', VAULT_TTL_SECONDS)
   const event = { ...request, id: `${request.kind}-${requestId}`, at: Date.now(), requestId } as ComputerControlEvent
@@ -115,7 +147,7 @@ export async function requestVault(
     if (raw) {
       await redis.del(VAULT_ACK_PREFIX + requestId, VAULT_PENDING_PREFIX + requestId)
       const ack = JSON.parse(raw) as VaultAck
-      return ack.ok ? { status: 'ok', updatedAt: ack.updatedAt } : { status: 'failed', error: ack.error }
+      return ack.ok ? { status: 'ok', ack } : { status: 'failed', error: ack.error }
     }
     await new Promise((done) => setTimeout(done, 150))
   }
