@@ -191,7 +191,7 @@ flowchart LR
 
 依赖：T08。
 
-### T10 连接器接入向导与读写标注 · AFK · M ⏳
+### T10 连接器接入向导与读写标注 · AFK · M ✅
 
 做什么：做前端的三步向导：选择类型 → 标注动作 → 录入凭证并试调用。动作默认标为写，非 GET/HEAD 的动作不能改成读。实现 `POST /personal/connectors/:id/test`。提供 bot 命令 `cumora connector draft`，bot 起草的连接器会显示"待你确认"。
 
@@ -215,7 +215,7 @@ flowchart LR
   - 没有做成全屏抽屉。第 1 步是新建表单，第 2、3 步就是草稿的详情页，顶部有三步的步骤条，这样两处不用各写一套。
   - 新增接口 `POST /personal/connectors/:id/actions/confirm`，用于一次确认全部标注。
   - 凭证的删除按钮补上了（T09 留下的）。`vault rm` 命令还是没做。
-  - 本地验证：单元测试 1636 个通过，失败的 4 个就是一直以来本机没有 Redis 的那 4 个；集成测试 10 个全部通过；lint、typecheck 和 4 个守卫检查都通过。agent-cli 包 470KB，里面没有混进 pg、ioredis 或 js-yaml。e2e 需要 Redis，等 CI。
+  - 本地验证：单元测试 1636 个通过，失败的 4 个就是一直以来本机没有 Redis 的那 4 个；集成测试 10 个全部通过；lint、typecheck 和 4 个守卫检查都通过。agent-cli 包 470KB，里面没有混进 pg、ioredis 或 js-yaml。CI 运行 38201828050 全部通过：e2e 4 个用例都执行了，没有跳过，`connector-wizard.e2e.ts` 用时 5.3 秒；单元测试 1640 个、集成测试 448 个，都是 0 失败。
 
 依赖：T08、T09。原计划依赖 T31，T31 暂缓后改为沿用现有风格。
 
